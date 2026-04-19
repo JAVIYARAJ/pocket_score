@@ -5,7 +5,7 @@ import '../bloc/match_list_bloc.dart';
 import '../bloc/score_bloc.dart';
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
-import 'scoring_screen.dart';
+
 
 class OpeningSelectionScreen extends StatefulWidget {
   final String battingTeamName;

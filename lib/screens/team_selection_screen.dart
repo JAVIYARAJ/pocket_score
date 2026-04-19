@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/player_bloc.dart';
 import '../bloc/match_bloc.dart';
-import '../models/player_model.dart';
+
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import 'toss_screen.dart';
+
 import 'team_preview_screen.dart';
 
 class TeamSelectionScreen extends StatefulWidget {

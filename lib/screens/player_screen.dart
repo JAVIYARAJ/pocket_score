@@ -238,7 +238,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
                 // ─── Player List or Empty State ───
                 if (state.players.isEmpty)
-                  SliverFillRemaining(
+                  const SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(
                       child: Column(
@@ -248,14 +248,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             opacity: 0.5,
                             child: Icon(Icons.sports_cricket_outlined, size: 80, color: AppColors.textMuted),
                           ),
-                          const SizedBox(height: 24),
-                          const Text('NO PLAYERS ADDED', style: TextStyle(color: AppColors.textSecondary,
+                          SizedBox(height: 24),
+                          Text('NO PLAYERS ADDED', style: TextStyle(color: AppColors.textSecondary,
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1)),
-                          const SizedBox(height: 8),
-                          const Text('Type names above to build your team', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                          const SizedBox(height: 100), // Avoid keyboard overlap
+                          SizedBox(height: 8),
+                          Text('Type names above to build your team', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                          SizedBox(height: 100), // Avoid keyboard overlap
                         ],
                       ),
                     ),

@@ -78,7 +78,7 @@ class ScoringScreen extends StatelessWidget {
       teamBOvers: second?.overDisplay,
       scoreData: state.toJson(),
       result: (first != null && second != null) 
-          ? (second.totalRuns > (first.totalRuns ?? 0) ? '${matchState.settings?.teamBName} won' : '${matchState.settings?.teamAName} won')
+          ? (second.totalRuns > first.totalRuns ? '${matchState.settings?.teamBName} won' : '${matchState.settings?.teamAName} won')
           : null,
     )));
   }
@@ -1111,7 +1111,6 @@ class _ScoringViewState extends State<_ScoringView> {
   }
 
   void _checkMilestones(ScoreState oldState, ScoreState newState) {
-    final oldStrikerId = oldState.strikerId;
     final newStrikerId = newState.strikerId;
 
     if (newStrikerId.isEmpty) return;

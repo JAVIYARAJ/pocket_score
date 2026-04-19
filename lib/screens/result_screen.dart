@@ -6,7 +6,7 @@ import '../bloc/match_list_bloc.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
 import '../widgets/scorecard_widget.dart';
-import 'home_screen.dart';
+
 import '../main.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -18,7 +18,7 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-  late Animation<double> _scale;
+
   late Animation<double> _fade;
   late ScoreState _savedState; // Save before reset
 
@@ -27,7 +27,6 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     super.initState();
     _savedState = context.read<ScoreBloc>().state;
     _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
     _fade = CurvedAnimation(parent: _ctrl, curve: const Interval(0.3, 1.0, curve: Curves.easeOut));
     _ctrl.forward();
     _finalize();

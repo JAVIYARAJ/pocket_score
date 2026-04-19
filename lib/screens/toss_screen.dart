@@ -31,9 +31,10 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
 
   void _flipCoin() async {
     setState(() => _isTossing = true);
-    await Future.delayed(const Duration(milliseconds: 1200));
     final ms = context.read<MatchBloc>().state;
+    await Future.delayed(const Duration(milliseconds: 1200));
     final winner = Random().nextBool() ? ms.teamA!.name : ms.teamB!.name;
+    if (!mounted) return;
     setState(() { _winner = winner; _isTossing = false; });
     _animCtrl.forward();
   }

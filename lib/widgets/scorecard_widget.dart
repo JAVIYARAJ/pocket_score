@@ -57,9 +57,9 @@ class ScorecardView extends StatelessWidget {
         // Header
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: AppColors.scoreGradient,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -120,20 +120,20 @@ class ScorecardView extends StatelessWidget {
             color: AppColors.warning.withValues(alpha: 0.1),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
           ),
-          child: Row(
+          child: const Row(
             children: [
               Icon(Icons.sports_baseball, size: 14, color: AppColors.warning),
-              const SizedBox(width: 8),
-              const Text('Bowling', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              SizedBox(width: 8),
+              Text('Bowling', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             ],
           ),
         ),
 
         // Bowling table
         Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.card,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
           ),
           child: Column(
             children: [
@@ -167,9 +167,9 @@ class ScorecardView extends StatelessWidget {
 
         // Overs Summary table
         Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.card,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
           ),
           child: Column(
             children: [

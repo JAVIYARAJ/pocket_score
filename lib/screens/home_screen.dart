@@ -11,7 +11,7 @@ import 'match_setup_screen.dart';
 import 'scoring_screen.dart';
 import '../utils/stats_utils.dart';
 import '../bloc/player_bloc.dart';
-import '../models/player_model.dart';
+
 import '../theme/animations.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -138,11 +138,11 @@ class HomeScreen extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Row(
+                                    const Row(
                                       children: [
                                         Icon(Icons.history, size: 14, color: AppColors.accent),
-                                        const SizedBox(width: 6),
-                                        const Text('LATEST RESULT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1)),
+                                        SizedBox(width: 6),
+                                        Text('LATEST RESULT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 1)),
                                       ],
                                     ),
                                     const SizedBox(height: 16),
@@ -207,7 +207,7 @@ class HomeScreen extends StatelessWidget {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
+                          decoration: const BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
                           child: Icon(Icons.sports_cricket, size: 48, color: AppColors.textMuted.withValues(alpha: 0.3)),
                         ),
                         const SizedBox(height: 20),
@@ -464,7 +464,7 @@ class _MatchCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Text(match.totalOvers.toString() + ' OV', style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.bold)),
+                Text('${match.totalOvers} OV', style: const TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.bold)),
               ],
             ),
             const SizedBox(height: 16),
@@ -578,7 +578,7 @@ class _MatchCard extends StatelessWidget {
           children: [
             Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 24)),
             const SizedBox(width: 16),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text(sub, style: TextStyle(color: AppColors.textMuted, fontSize: 12))])),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text(sub, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))])),  
             Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.2)),
           ],
         ),
