@@ -3,7 +3,7 @@ name: Android APK (Flutter)
 on:
   push:
     branches:
-      - main   # change if needed
+      - main   # change to your branch
 
 concurrency:
   group: apk-build-${{ github.ref }}
@@ -13,12 +13,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      FLUTTER_VERSION: 3.19.0
+
     steps:
-      # 1. Checkout code
+      # 1. Checkout
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # 2. Setup Java (required for Android)
+      # 2. Setup Java (required for Android Gradle)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -26,41 +29,35 @@ jobs:
           java-version: 17
           cache: gradle
 
-      # 3. Install Flutter 3.11.1 manually (reliable for old versions)
-      - name: Setup Flutter 3.11.1
-        run: |
-          git clone https://github.com/flutter/flutter.git --depth 1 --branch 3.11.1 $HOME/flutter
-          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+      # 3. Setup Flutter (with cache enabled)
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
 
-      # 4. Verify setup
+      # 4. Verify environment (good for debugging CI issues)
       - name: Flutter Doctor
         run: flutter doctor -v
 
-      # 5. Cache pub dependencies
-      - name: Cache pub packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      # 6. Get dependencies
+      # 5. Install dependencies
       - name: Install dependencies
         run: flutter pub get
 
-      # 7. Analyze (optional but clean practice)
+      # 6. Analyze (optional but recommended)
       - name: Analyze project
         run: flutter analyze
 
-      # 8. Build APK (release, unsigned)
+      # 7. Build APK (correct production way)
       - name: Build Release APK
         run: |
           flutter clean
-          flutter build apk --release
+          flutter build apk \
+            --release \
+            --no-tree-shake-icons
 
-      # 9. Upload APK
-      - name: Upload APK artifact
+      # 8. Upload artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
