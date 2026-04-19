@@ -43,7 +43,7 @@ jobs:
       # 5. Install dependencies
       - name: Install dependencies
         run: flutter pub get
-        
+
       # 6. Build APK (correct production way)
       - name: Build Release APK
         run: |
