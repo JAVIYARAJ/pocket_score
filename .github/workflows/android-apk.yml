@@ -1,0 +1,65 @@
+name: Android APK (Flutter)
+
+on:
+  push:
+    branches:
+      - main   # change to your branch
+
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      FLUTTER_VERSION: 3.19.0
+
+    steps:
+      # 1. Checkout
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # 2. Setup Java (required for Android Gradle)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      # 3. Setup Flutter (with cache enabled)
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # 4. Verify environment (good for debugging CI issues)
+      - name: Flutter Doctor
+        run: flutter doctor -v
+
+      # 5. Install dependencies
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 6. Analyze (optional but recommended)
+      - name: Analyze project
+        run: flutter analyze
+
+      # 7. Build APK (correct production way)
+      - name: Build Release APK
+        run: |
+          flutter clean
+          flutter build apk \
+            --release \
+            --no-tree-shake-icons
+
+      # 8. Upload artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
