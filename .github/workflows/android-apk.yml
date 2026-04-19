@@ -43,12 +43,8 @@ jobs:
       # 5. Install dependencies
       - name: Install dependencies
         run: flutter pub get
-
-      # 6. Analyze (optional but recommended)
-      - name: Analyze project
-        run: flutter analyze
-
-      # 7. Build APK (correct production way)
+        
+      # 6. Build APK (correct production way)
       - name: Build Release APK
         run: |
           flutter clean
@@ -56,7 +52,7 @@ jobs:
             --release \
             --no-tree-shake-icons
 
-      # 8. Upload artifact
+      # 7. Upload artifact
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

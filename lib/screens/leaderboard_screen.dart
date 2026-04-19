@@ -59,12 +59,6 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                           ).createShader(bounds),
                           child: const Text('Rankings', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -1, color: Colors.white)),
                         ),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-                          child: const Text('GULLY & BOX RULES', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 0.8)),
-                        )
                       ],
                     ),
                     const Spacer(),
