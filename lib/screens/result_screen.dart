@@ -54,14 +54,26 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     if (matchId != null) {
       final ml = context.read<MatchListBloc>().state.matches;
       final ex = ml.where((m) => m.id == matchId).firstOrNull;
-      if (ex != null && ex.status != 'completed') {
+      if (ex != null) {
         final matchState = context.read<MatchBloc>().state;
         // Save with full score data for scorecard viewing later
         final scoreJson = _savedState.copyWith(history: const []).toJson();
+        final String teamAName = ex.teamAName;
+        int? teamAScore, teamAWickets, teamBScore, teamBWickets;
+        String? teamAOvers, teamBOvers;
+
+        if (first.battingTeamName == teamAName) {
+          teamAScore = first.totalRuns; teamAWickets = first.totalWickets; teamAOvers = first.overDisplay;
+          teamBScore = second.totalRuns; teamBWickets = second.totalWickets; teamBOvers = second.overDisplay;
+        } else {
+          teamBScore = first.totalRuns; teamBWickets = first.totalWickets; teamBOvers = first.overDisplay;
+          teamAScore = second.totalRuns; teamAWickets = second.totalWickets; teamAOvers = second.overDisplay;
+        }
+
         context.read<MatchListBloc>().add(UpdateMatchInList(ex.copyWith(
           status: 'completed', result: result,
-          teamAScore: first.totalRuns, teamAWickets: first.totalWickets, teamAOvers: first.overDisplay,
-          teamBScore: second.totalRuns, teamBWickets: second.totalWickets, teamBOvers: second.overDisplay,
+          teamAScore: teamAScore, teamAWickets: teamAWickets, teamAOvers: teamAOvers,
+          teamBScore: teamBScore, teamBWickets: teamBWickets, teamBOvers: teamBOvers,
           scoreData: scoreJson,
           teamA: matchState.teamA,
           teamB: matchState.teamB,

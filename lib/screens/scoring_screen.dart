@@ -61,24 +61,55 @@ class ScoringScreen extends StatelessWidget {
     final first = state.firstInnings;
     final second = state.secondInnings;
 
+    final bool isDone = second != null && (
+      second.totalRuns > (first?.totalRuns ?? 0) || 
+      second.legalBallsCount >= (matchState.settings?.totalOvers ?? 0) * 6 ||
+      ((state.outPlayerIds.length + state.retiredHurtIds.length) >= (state.isLastManStanding ? state.battingLineup.length : state.battingLineup.length - 1))
+    );
+
+    final String teamAName = matchState.settings?.teamAName ?? '';
+    final String teamBName = matchState.settings?.teamBName ?? '';
+
+    int? teamAScore, teamAWickets, teamBScore, teamBWickets;
+    String? teamAOvers, teamBOvers;
+
+    if (first != null) {
+      if (first.battingTeamName == teamAName) {
+        teamAScore = first.totalRuns; teamAWickets = first.totalWickets; teamAOvers = first.overDisplay;
+      } else {
+        teamBScore = first.totalRuns; teamBWickets = first.totalWickets; teamBOvers = first.overDisplay;
+      }
+    }
+    if (second != null) {
+      if (second.battingTeamName == teamAName) {
+        teamAScore = second.totalRuns; teamAWickets = second.totalWickets; teamAOvers = second.overDisplay;
+      } else {
+        teamBScore = second.totalRuns; teamBWickets = second.totalWickets; teamBOvers = second.overDisplay;
+      }
+    }
+
     context.read<MatchListBloc>().add(UpdateMatchInList(MatchSummary(
       id: matchState.matchId!,
-      teamAName: matchState.settings?.teamAName ?? '',
-      teamBName: matchState.settings?.teamBName ?? '',
+      teamAName: teamAName,
+      teamBName: teamBName,
       teamA: matchState.teamA,
       teamB: matchState.teamB,
       totalOvers: matchState.settings?.totalOvers ?? 0,
-      status: (first != null && second != null) ? 'completed' : 'in_progress',
+      status: isDone ? 'completed' : 'in_progress',
       createdAt: DateTime.now(), 
-      teamAScore: first?.totalRuns,
-      teamAWickets: first?.totalWickets,
-      teamAOvers: first?.overDisplay,
-      teamBScore: second?.totalRuns,
-      teamBWickets: second?.totalWickets,
-      teamBOvers: second?.overDisplay,
+      teamAScore: teamAScore,
+      teamAWickets: teamAWickets,
+      teamAOvers: teamAOvers,
+      teamBScore: teamBScore,
+      teamBWickets: teamBWickets,
+      teamBOvers: teamBOvers,
       scoreData: state.toJson(),
-      result: (first != null && second != null) 
-          ? (second.totalRuns > first.totalRuns ? '${matchState.settings?.teamBName} won' : '${matchState.settings?.teamAName} won')
+      result: isDone
+          ? (second!.totalRuns > first!.totalRuns 
+              ? '${second.battingTeamName} won' 
+              : (first.totalRuns > second.totalRuns 
+                  ? '${first.battingTeamName} won' 
+                  : 'Match Tied'))
           : null,
     )));
   }

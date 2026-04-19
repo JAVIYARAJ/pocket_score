@@ -36,6 +36,7 @@ class BowlerStats {
   int wickets = 0;
   int wides = 0;
   int noBalls = 0;
+  int dotBalls = 0;
 
   BowlerStats(this.playerId);
 
@@ -150,6 +151,7 @@ class Innings extends Equatable {
       if (ball.isWicket) s.wickets++;
       if (ball.type == BallType.wide) s.wides++;
       if (ball.type == BallType.noBall) s.noBalls++;
+      if (ball.isLegalBall && ball.runs == 0 && ball.extraRuns == 0) s.dotBalls++;
     }
     return stats;
   }

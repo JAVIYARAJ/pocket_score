@@ -10,6 +10,7 @@ import 'player_screen.dart';
 import 'match_setup_screen.dart';
 import 'scoring_screen.dart';
 import '../utils/stats_utils.dart';
+import 'leaderboard_screen.dart';
 import '../bloc/player_bloc.dart';
 
 import '../theme/animations.dart';
@@ -253,87 +254,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showStatsSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        minChildSize: 0.6,
-        maxChildSize: 0.98,
-        builder: (ctx, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 24),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
-                child: Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Player Rankings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                        Text('Based on all matches recorded', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                      ],
-                    ),
-                    Spacer(),
-                    Icon(Icons.emoji_events_rounded, color: Color(0xFFFFD700), size: 32),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: BlocBuilder<PlayerBloc, PlayerState>(
-                  builder: (context, pState) {
-                    return BlocBuilder<MatchListBloc, MatchListState>(
-                      builder: (context, mState) {
-                        // Refresh stats every time sheet is opened
-                        final statsMap = calculateAllPlayerStats(mState.matches, pState.players);
-                        final statsList = statsMap.values.where((s) => s.matches > 0).toList();
-                        
-                        // Sort by Runs primarily, then Wickets
-                        statsList.sort((a, b) {
-                          int cmp = b.runs.compareTo(a.runs);
-                          if (cmp == 0) return b.wickets.compareTo(a.wickets);
-                          return cmp;
-                        });
-
-                        if (statsList.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.analytics_outlined, size: 64, color: AppColors.textMuted.withValues(alpha: 0.1)),
-                                const SizedBox(height: 16),
-                                const Text('No records found yet.', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w500)),
-                                const Text('Play some matches to see rankings!', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-                          itemCount: statsList.length,
-                          itemBuilder: (context, index) => _PlayerStatCard(stats: statsList[index], rank: index + 1),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
   }
 
   static Widget _iconBtn(BuildContext context, IconData icon, String tooltip, VoidCallback onTap) {
@@ -614,42 +535,4 @@ class _MatchCard extends StatelessWidget {
   }
 }
 
-class _PlayerStatCard extends StatelessWidget {
-  final PlayerStats stats;
-  final int rank;
-  const _PlayerStatCard({required this.stats, required this.rank});
 
-  @override
-  Widget build(BuildContext context) {
-    final isTop3 = rank <= 3;
-    final rankColor = rank == 1 ? const Color(0xFFFFD700) : rank == 2 ? const Color(0xFFC0C0C0) : rank == 3 ? const Color(0xFFCD7F32) : AppColors.textMuted;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isTop3 ? rankColor.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.04)),
-      ),
-      child: Row(
-        children: [
-          Container(width: 28, alignment: Alignment.center, child: Text('#$rank', style: TextStyle(fontWeight: FontWeight.w900, color: rankColor, fontSize: 13))),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(stats.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), Text(stats.role.name.toUpperCase(), style: const TextStyle(fontSize: 9, color: AppColors.textMuted, letterSpacing: 0.5))])),
-          _statItem('M', '${stats.matches}'),
-          _statItem('R', '${stats.runs}', isBold: true),
-          _statItem('W', '${stats.wickets}', color: AppColors.wicket),
-        ],
-      ),
-    );
-  }
-
-  Widget _statItem(String label, String value, {bool isBold = false, Color? color}) {
-    return Container(
-      width: 44,
-      margin: const EdgeInsets.only(left: 8),
-      child: Column(children: [Text(label, style: const TextStyle(fontSize: 9, color: AppColors.textMuted, fontWeight: FontWeight.bold)), const SizedBox(height: 2), Text(value, style: TextStyle(fontSize: 14, fontWeight: isBold ? FontWeight.w900 : FontWeight.bold, color: color ?? AppColors.textPrimary))]),
-    );
-  }
-}
