@@ -53,13 +53,25 @@
 
 ---
 
-## 📱 Screenshots
+## 📱 Gallery
 
-> *Premium design meets intuitive functionality.*
+> *Premium design meets intuitive functionality. Experience the "Midnight Studio" aesthetic.*
 
-| Home Screen | Scoring Engine | Leaderboard |
-| :--- | :--- | :--- |
-| ![Home](https://via.placeholder.com/300x600?text=Home+Screen) | ![Scoring](https://via.placeholder.com/300x600?text=Scoring+Screen) | ![Leaderboard](https://via.placeholder.com/300x600?text=Leaderboard) |
+| Match List | Dashboard | Add Players | Player List |
+| :---: | :---: | :---: | :---: |
+| ![Screen 1](assets/app_images/image_1.png) | ![Screen 2](assets/app_images/image_2.png) | ![Screen 3](assets/app_images/image_3.png) | ![Screen 4](assets/app_images/image_4.png) |
+
+| Team Selection | Match Setup | Toss Screen | Opener Selection |
+| :---: | :---: | :---: | :---: |
+| ![Screen 5](assets/app_images/image_5.png) | ![Screen 6](assets/app_images/image_6.png) | ![Screen 7](assets/app_images/image_7.png) | ![Screen 8](assets/app_images/image_8.png) |
+
+| Scoring Engine | Bowling Stats | Extras Menu | Wicket Options |
+| :---: | :---: | :---: | :---: |
+| ![Screen 9](assets/app_images/image_9.png) | ![Screen 10](assets/app_images/image_10.png) | ![Screen 11](assets/app_images/image_11.png) | ![Screen 12](assets/app_images/image_12.png) |
+
+| Scorecard View | Match History | Career Stats | Leaderboard |
+| :---: | :---: | :---: | :---: |
+| ![Screen 13](assets/app_images/image_13.png) | ![Screen 14](assets/app_images/image_14.png) | ![Screen 15](assets/app_images/image_15.png) | ![Screen 16](assets/app_images/image_16.png) |
 
 ---
 
