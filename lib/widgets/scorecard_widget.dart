@@ -101,7 +101,7 @@ class ScorecardView extends StatelessWidget {
           decoration: const BoxDecoration(color: AppColors.card),
           child: Column(
             children: [
-              _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'SR']),
+              _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'S/R']),
               ...bats.entries.map((e) {
                 final name = _findName(inn, e.key);
                 final s = e.value;
@@ -137,7 +137,7 @@ class ScorecardView extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _headerRow(['Bowler', 'O', 'R', 'W', 'Eco', 'Ext']),
+              _headerRow(['Bowler', 'O', 'R', 'W', 'ECON', 'Ext']),
               ...bowls.entries.map((e) {
                 final name = _findName(inn, e.key);
                 final s = e.value;

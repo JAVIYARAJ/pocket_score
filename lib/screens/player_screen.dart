@@ -74,7 +74,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.danger.withValues(alpha: 0.1),
+                color: AppColors.danger.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.delete_sweep_outlined, color: AppColors.danger, size: 24),
@@ -164,7 +164,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           textCapitalization: TextCapitalization.words,
                           decoration: InputDecoration(
                             hintText: 'Enter name (use comma for multiple)',
-                            hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.5)),
+                            hintStyle: TextStyle(color: AppColors.textMuted.withOpacity(0.5)),
                             prefixIcon: const Icon(Icons.person_add_outlined),
                             suffixIcon: IconButton(
                               onPressed: _addPlayer,
@@ -194,7 +194,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                   },
                                   avatar: Icon(_roleIcon(role), size: 14, color: isSelected ? Colors.white : color),
                                   selectedColor: color,
-                                  backgroundColor: color.withValues(alpha: 0.1),
+                                  backgroundColor: color.withOpacity(0.1),
                                   labelStyle: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
@@ -223,7 +223,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                          decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
                           child: Text('${state.players.length}', style: const TextStyle(
                               color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
@@ -276,7 +276,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               alignment: Alignment.centerRight,
                               padding: const EdgeInsets.only(right: 24),
                               margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                              decoration: BoxDecoration(color: AppColors.danger.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
                               child: const Icon(Icons.delete_sweep_outlined, color: AppColors.danger),
                             ),
                             onDismissed: (_) => context.read<PlayerBloc>().add(RemovePlayer(player.id)),
@@ -291,12 +291,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     height: 48,
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
-                                        colors: [roleCol.withValues(alpha: 0.2), roleCol.withValues(alpha: 0.05)],
+                                        colors: [roleCol.withOpacity(0.2), roleCol.withOpacity(0.05)],
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                       ),
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: roleCol.withValues(alpha: 0.1)),
+                                      border: Border.all(color: roleCol.withOpacity(0.1)),
                                     ),
                                     alignment: Alignment.center,
                                     child: Text(
@@ -312,7 +312,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                         const SizedBox(height: 4),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(color: roleCol.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                                          decoration: BoxDecoration(color: roleCol.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [

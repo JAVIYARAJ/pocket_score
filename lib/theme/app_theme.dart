@@ -64,9 +64,9 @@ class AppColors {
 
 class AppDecorations {
   static BoxDecoration glassCard({double opacity = 0.08}) => BoxDecoration(
-    color: Colors.white.withValues(alpha: opacity),
+    color: Colors.white.withOpacity(opacity),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+    border: Border.all(color: Colors.white.withOpacity(0.06)),
   );
 
   static BoxDecoration gradientCard(LinearGradient gradient) => BoxDecoration(
@@ -74,7 +74,7 @@ class AppDecorations {
     borderRadius: BorderRadius.circular(20),
     boxShadow: [
       BoxShadow(
-        color: gradient.colors.first.withValues(alpha: 0.3),
+        color: gradient.colors.first.withOpacity(0.3),
         blurRadius: 20,
         offset: const Offset(0, 8),
       ),
@@ -82,9 +82,9 @@ class AppDecorations {
   );
 
   static BoxDecoration accentBorder(Color color) => BoxDecoration(
-    color: color.withValues(alpha: 0.1),
+    color: color.withOpacity(0.1),
     borderRadius: BorderRadius.circular(12),
-    border: Border.all(color: color.withValues(alpha: 0.3)),
+    border: Border.all(color: color.withOpacity(0.3)),
   );
 }
 
@@ -120,7 +120,7 @@ class AppTheme {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 4,
-        shadowColor: AppColors.primary.withValues(alpha: 0.4),
+        shadowColor: AppColors.primary.withOpacity(0.4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),

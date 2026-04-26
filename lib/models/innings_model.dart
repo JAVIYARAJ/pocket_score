@@ -127,14 +127,17 @@ class Innings extends Equatable {
       final s = stats[ball.strikerId]!;
       s.runs += ball.runs;
       if (ball.isLegalBall) s.ballsFaced++;
-      if (ball.type == BallType.normal && ball.runs == 4) s.fours++;
-      if (ball.type == BallType.normal && ball.runs == 6) s.sixes++;
+      if (ball.runs == 4) s.fours++;
+      if (ball.runs == 6) s.sixes++;
       
       if (ball.isWicket) {
-         s.isOut = true;
-         s.wicketType = ball.wicketType;
-         s.outBowlerId = ball.bowlerId;
-         s.outFielderId = ball.fielderId;
+         final outId = ball.outPlayerId ?? ball.strikerId;
+         stats.putIfAbsent(outId, () => BatsmanStats(outId));
+         final outS = stats[outId]!;
+         outS.isOut = true;
+         outS.wicketType = ball.wicketType;
+         outS.outBowlerId = ball.bowlerId;
+         outS.outFielderId = ball.fielderId;
       }
     }
     return stats;

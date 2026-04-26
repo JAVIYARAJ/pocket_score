@@ -278,6 +278,7 @@ class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
         isWicket: event.isWicket,
         wicketType: event.wicketType,
         fielderId: event.fielderId,
+        outPlayerId: event.isWicket ? (event.outPlayerId ?? state.strikerId) : null,
       );
 
       final updatedBalls = List<Ball>.from(currentInnings.balls)..add(ball);

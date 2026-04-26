@@ -58,6 +58,12 @@ class PlayerStats {
     return min(bonus, 10);
   }
 
+  String get oversBowled {
+    int overs = ballsBowled ~/ 6;
+    int balls = ballsBowled % 6;
+    return '$overs.$balls';
+  }
+
   PlayerStats({required this.id, required this.name, required this.role});
 }
 
@@ -145,9 +151,38 @@ class RankCalculator {
 
     return (bat * 0.5) + (bowl * 0.5);
   }
+
+  static double calculateMatchImpact(PlayerStats s, {bool won = false}) {
+    double score = 0.0;
+    
+    // Batting: 1 point per run, bonus for SR
+    score += s.runs;
+    if (s.ballsFaced > 0) {
+      if (s.strikeRate > 150) score += 10;
+      if (s.strikeRate > 200) score += 10;
+      if (s.runs >= 50) score += 20;
+      if (s.runs >= 30) score += 10;
+    }
+
+    // Bowling: 20 points per wicket, bonus for Economy
+    score += (s.wickets * 25);
+    if (s.ballsBowled > 0) {
+      if (s.economy < 6) score += 15;
+      if (s.economy < 4) score += 10;
+      if (s.wickets >= 3) score += 20;
+    }
+
+    // Fielding: 5 points per catch/runout
+    score += (s.catches * 5) + (s.runOuts * 10);
+
+    // Winning bonus (Standard ICC: MoM almost always comes from winning side)
+    if (won) score += 50;
+
+    return score;
+  }
 }
 
-Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, List<Player> allPlayers, {String? scopeGroupId, String? scopeTournamentId}) {
+Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, List<Player> allPlayers, {String? scopeGroupId, String? scopeTournamentId, DateTime? scopeDate}) {
   final Map<String, PlayerStats> stats = {
     for (var p in allPlayers) p.id: PlayerStats(id: p.id, name: p.name, role: p.role)
   };
@@ -159,6 +194,15 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
     // Filter by group/tournament if specified
     if (scopeGroupId != null && match.groupId != scopeGroupId) continue;
     if (scopeTournamentId != null && match.tournamentId != scopeTournamentId) continue;
+
+    // Filter by date if specified
+    if (scopeDate != null) {
+      if (match.createdAt.year != scopeDate.year || 
+          match.createdAt.month != scopeDate.month || 
+          match.createdAt.day != scopeDate.day) {
+        continue;
+      }
+    }
 
     if (match.scoreData == null) continue;
     
@@ -206,10 +250,6 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
             p.recentBattingInnings.add(s.runs);
 
             if (s.runs >= 50) p.fifties++;
-
-            if (s.isOut && s.wicketType != 'Retired' && s.wicketType != 'Timed out') {
-              p.dismissals++;
-            }
           }
         });
         
@@ -226,13 +266,30 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
           }
         });
         
-        // Fielding stats mapping (optional extraction if stored in batsman stats as outFielderId)
-        inn.batsmanStats.forEach((id, s) {
-           if (s.isOut && s.outFielderId != null && stats.containsKey(s.outFielderId)) {
-               final f = stats[s.outFielderId]!;
-               if (s.wicketType == 'Run Out') f.runOuts++;
-               else if (s.wicketType == 'Caught') f.catches++;
-           }
+        // Fielding & Dismissal stats mapping
+        inn.balls.forEach((ball) {
+          // Count Dismissals
+          if (ball.isWicket) {
+            final outId = ball.outPlayerId ?? ball.strikerId;
+            if (stats.containsKey(outId)) {
+              final p = stats[outId]!;
+              final wType = ball.wicketType?.toUpperCase();
+              if (wType != 'RETIRED' && wType != 'RETIRED HURT') {
+                p.dismissals++;
+              }
+            }
+          }
+
+          // Count Fielding
+          if (ball.isWicket && ball.fielderId != null && stats.containsKey(ball.fielderId)) {
+            final f = stats[ball.fielderId]!;
+            final wType = ball.wicketType?.toUpperCase();
+            if (wType == 'RUN OUT') {
+              f.runOuts++;
+            } else if (wType == 'CAUGHT' || wType == 'STUMPED') {
+              f.catches++;
+            }
+          }
         });
       }
 

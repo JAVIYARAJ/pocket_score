@@ -131,7 +131,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: isTie ? AppColors.scoreGradient : AppColors.successGradient,
-                    boxShadow: [BoxShadow(color: (isTie ? AppColors.primary : AppColors.success).withValues(alpha: 0.3), blurRadius: 40)],
+                    boxShadow: [BoxShadow(color: (isTie ? AppColors.primary : AppColors.success).withOpacity(0.3), blurRadius: 40)],
                   ),
                   child: const Icon(Icons.emoji_events, size: 64, color: Colors.white),
                 ),
@@ -184,7 +184,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+                    side: BorderSide(color: AppColors.primary.withOpacity(0.4)),
                     foregroundColor: AppColors.primary,
                   ),
                 ),

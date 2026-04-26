@@ -73,7 +73,7 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
                     shape: BoxShape.circle,
                     gradient: AppColors.primaryGradient,
                     boxShadow: [
-                      BoxShadow(color: AppColors.primary.withValues(alpha: _isTossing ? 0.6 : 0.3), blurRadius: _isTossing ? 40 : 20, spreadRadius: _isTossing ? 4 : 0),
+                      BoxShadow(color: AppColors.primary.withOpacity(_isTossing ? 0.6 : 0.3), blurRadius: _isTossing ? 40 : 20, spreadRadius: _isTossing ? 4 : 0),
                     ],
                   ),
                   child: Center(
@@ -151,9 +151,9 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
         duration: const Duration(milliseconds: 200),
         width: 120, height: 100,
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary.withValues(alpha: 0.2) : AppColors.surfaceLight,
+          color: selected ? AppColors.primary.withOpacity(0.2) : AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: selected ? AppColors.primary : Colors.white.withValues(alpha: 0.08), width: selected ? 2 : 1),
+          border: Border.all(color: selected ? AppColors.primary : Colors.white.withOpacity(0.08), width: selected ? 2 : 1),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

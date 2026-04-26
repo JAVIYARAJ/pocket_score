@@ -1,0 +1,228 @@
+import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'stats_utils.dart';
+
+class MatchMoM {
+  final String matchName;
+  final String momName;
+  final String performance;
+
+  MatchMoM({required this.matchName, required this.momName, required this.performance});
+}
+
+class PdfUtils {
+  static Future<void> shareRankingsPdf({
+    required List<PlayerStats> batters,
+    required List<PlayerStats> bowlers,
+    required List<PlayerStats> impact,
+    required List<PlayerStats> fielding,
+    required List<MatchMoM> matchMoMs,
+    required String filterTag,
+  }) async {
+    final pdf = pw.Document();
+
+    final font = await PdfGoogleFonts.robotoRegular();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        theme: pw.ThemeData.withFont(base: font),
+        build: (pw.Context context) {
+          return [
+            // Branded Header
+            pw.Container(
+              padding: const pw.EdgeInsets.only(bottom: 20),
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(bottom: pw.BorderSide(color: PdfColors.blue900, width: 2)),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('POCKET SCORE', style: pw.TextStyle(fontSize: 28, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900, letterSpacing: 1)),
+                      pw.Text('Official Player Rankings & Statistics', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                    ],
+                  ),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.blue900,
+                      borderRadius: pw.BorderRadius.circular(4),
+                    ),
+                    child: pw.Text(filterTag.toUpperCase(), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 30),
+
+            _buildSection(pdf, 'BATTING LEADERS', batters, (p) => p.battingRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Inn', 'Runs', 'Balls', '4s/6s', '50s', 'Avg', 'Pts']),
+            pw.SizedBox(height: 30),
+            
+            _buildSection(pdf, 'BOWLING LEADERS', bowlers, (p) => p.bowlingRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Inn', 'Overs', 'Runs', 'Wkts', 'Econ', 'Pts']),
+            pw.SizedBox(height: 30),
+
+            _buildSection(pdf, 'MOST IMPACTFUL PLAYERS', impact, (p) => p.impactRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Runs', 'Wkts', 'Avg', 'Econ', 'Pts']),
+            pw.SizedBox(height: 30),
+
+            _buildSection(pdf, 'FIELDING LEADERS', fielding, (p) => (p.catches * 2 + p.runOuts * 3).toString(), ['#', 'Player', 'Mat', 'Catches', 'Run Outs', 'Bonus', 'Pts']),
+            
+            if (matchMoMs.isNotEmpty) ...[
+              pw.SizedBox(height: 40),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: const pw.BoxDecoration(color: PdfColors.blueGrey100),
+                child: pw.Text('MATCH SUMMARIES (PLAYER OF THE MATCH)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey900)),
+              ),
+              pw.SizedBox(height: 10),
+              pw.TableHelper.fromTextArray(
+                headers: ['Match', 'Player of the Match', 'Performance'],
+                data: matchMoMs.map((m) => [m.matchName, m.momName, m.performance]).toList(),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                cellHeight: 22,
+                rowDecoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 0.5))),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(2),
+                  2: const pw.FlexColumnWidth(3),
+                },
+              ),
+            ],
+
+            pw.Footer(
+              margin: const pw.EdgeInsets.only(top: 40),
+              trailing: pw.Text('Generated by Pocket Score - Javiya Raj   |   Date: ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey500)),
+            ),
+          ];
+        },
+      ),
+    );
+
+    final bytes = await pdf.save();
+    final directory = await getTemporaryDirectory();
+    final now = DateTime.now();
+    final months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    final dateStr = '${now.day}_${months[now.month - 1]}_${now.year}';
+    final file = File('${directory.path}/pocket_score_$dateStr.pdf');
+    await file.writeAsBytes(bytes);
+
+    await Share.shareXFiles([XFile(file.path)], text: 'Check out the latest cricket rankings!');
+  }
+
+  static pw.Widget _buildSection(
+    pw.Document pdf, 
+    String title, 
+    List<PlayerStats> players, 
+    String Function(PlayerStats) scoreLabel,
+    List<String> headers,
+  ) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.only(bottom: 6, left: 4),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(left: pw.BorderSide(color: PdfColors.blue900, width: 3)),
+          ),
+          child: pw.Text(title, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+        ),
+        pw.SizedBox(height: 8),
+        pw.TableHelper.fromTextArray(
+          headers: headers,
+          data: List.generate(players.length, (index) {
+            final p = players[index];
+            if (title.contains('BATTING')) {
+              return [
+                '${index + 1}',
+                p.name,
+                '${p.matches}',
+                '${p.inningsBatted}',
+                '${p.runs}',
+                '${p.ballsFaced}',
+                '${p.fours}/${p.sixes}',
+                '${p.fifties}',
+                p.average.toStringAsFixed(1),
+                scoreLabel(p),
+              ];
+            } else if (title.contains('BOWLING')) {
+              return [
+                '${index + 1}',
+                p.name,
+                '${p.matches}',
+                '${p.matchesBowled}',
+                p.oversBowled,
+                '${p.runsConceded}',
+                '${p.wickets}',
+                p.economy.toStringAsFixed(1),
+                scoreLabel(p),
+              ];
+            } else if (title.contains('FIELDING')) {
+              return [
+                '${index + 1}',
+                p.name,
+                '${p.matches}',
+                '${p.catches}',
+                '${p.runOuts}',
+                '${p.fieldingBonus}',
+                scoreLabel(p),
+              ];
+            } else {
+              return [
+                '${index + 1}',
+                p.name,
+                '${p.matches}',
+                '${p.runs}',
+                '${p.wickets}',
+                p.average.toStringAsFixed(1),
+                p.economy.toStringAsFixed(1),
+                scoreLabel(p),
+              ];
+            }
+          }),
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.blue900),
+          cellStyle: const pw.TextStyle(fontSize: 8, color: PdfColors.grey900),
+          cellHeight: 20,
+          rowDecoration: const pw.BoxDecoration(
+            border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey100, width: 0.5)),
+          ),
+          oddRowDecoration: const pw.BoxDecoration(color: PdfColors.blue50),
+          columnWidths: {
+            0: const pw.FixedColumnWidth(20), // Rank
+            1: const pw.FlexColumnWidth(2.5), // Player Name
+            2: const pw.FlexColumnWidth(0.6), 
+            3: const pw.FlexColumnWidth(0.6), 
+            4: const pw.FlexColumnWidth(0.9),
+            5: const pw.FlexColumnWidth(0.9),
+            6: const pw.FlexColumnWidth(0.9),
+            7: const pw.FlexColumnWidth(0.7),   
+            8: const pw.FlexColumnWidth(0.9),   
+            9: const pw.FlexColumnWidth(0.9),   // Score
+          },
+          cellAlignments: {
+            0: pw.Alignment.center,
+            1: pw.Alignment.centerLeft,
+            2: pw.Alignment.center,
+            3: pw.Alignment.center,
+            4: pw.Alignment.centerRight,
+            5: pw.Alignment.centerRight,
+            6: pw.Alignment.centerRight,
+            7: pw.Alignment.centerRight,
+            8: pw.Alignment.centerRight,
+            9: pw.Alignment.centerRight,
+          },
+        ),
+      ],
+    );
+  }
+}

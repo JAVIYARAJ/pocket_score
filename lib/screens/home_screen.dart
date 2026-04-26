@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/match_list_bloc.dart';
+
 import '../bloc/match_bloc.dart';
+import '../bloc/match_list_bloc.dart';
 import '../bloc/score_bloc.dart';
 import '../models/match_models.dart';
-import '../theme/app_theme.dart';
-import '../widgets/scorecard_widget.dart';
-import 'player_screen.dart';
-import 'match_setup_screen.dart';
-import 'scoring_screen.dart';
-import '../utils/stats_utils.dart';
-import 'leaderboard_screen.dart';
-import '../bloc/player_bloc.dart';
-
 import '../theme/animations.dart';
+import '../theme/app_theme.dart';
+import '../utils/stats_utils.dart';
+import '../widgets/scorecard_widget.dart';
+import 'leaderboard_screen.dart';
+import 'match_setup_screen.dart';
+import 'player_screen.dart';
+import 'scoring_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -89,7 +88,7 @@ class HomeScreen extends StatelessWidget {
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2),
+                                      color: Colors.white.withOpacity(0.2),
                                       borderRadius: BorderRadius.circular(14),
                                     ),
                                     child: const Icon(Icons.add, color: Colors.white, size: 24),
@@ -185,7 +184,7 @@ class HomeScreen extends StatelessWidget {
                     builder: (_, state) => Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
+                        color: AppColors.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text('${state.matches.length} Matches', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900, fontSize: 10)),
@@ -209,7 +208,7 @@ class HomeScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(24),
                           decoration: const BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
-                          child: Icon(Icons.sports_cricket, size: 48, color: AppColors.textMuted.withValues(alpha: 0.3)),
+                          child: Icon(Icons.sports_cricket, size: 48, color: AppColors.textMuted.withOpacity(0.3)),
                         ),
                         const SizedBox(height: 20),
                         const Text('No matches yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
@@ -263,9 +262,9 @@ class HomeScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         child: Icon(icon, size: 22, color: AppColors.textSecondary),
       ),
@@ -292,7 +291,7 @@ class _LiveMatchHero extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
                     child: const Row(
                       children: [
                         PulseAnimation(child: Icon(Icons.circle, size: 6, color: Colors.redAccent)),
@@ -301,7 +300,7 @@ class _LiveMatchHero extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Text('${match.totalOvers} OVERS', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.bold)),
+                  Text('${match.totalOvers} OVERS', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10, fontWeight: FontWeight.bold)),
                 ],
               ),
               const SizedBox(height: 20),
@@ -338,7 +337,7 @@ class _LiveMatchHero extends StatelessWidget {
         Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
         const SizedBox(height: 4),
         Text('${score ?? 0}/${wickets ?? 0}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-        Text('(${overs ?? "0.0"} ov)', style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+        Text('(${overs ?? "0.0"} ov)', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11)),
       ],
     );
   }
@@ -369,7 +368,7 @@ class _MatchCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: AppDecorations.glassCard(opacity: 0.04).copyWith(
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,7 +377,7 @@ class _MatchCard extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                   child: Text(
                     isDone ? 'COMPLETED' : isLive ? 'LIVE' : 'SETUP',
                     style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: statusColor, letterSpacing: 1),
@@ -422,7 +421,7 @@ class _MatchCard extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
                 child: Text(match.result!, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 11), textAlign: TextAlign.center),
               ),
             ],
@@ -494,13 +493,13 @@ class _MatchCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withValues(alpha: 0.1))),
+        decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(0.1))),
         child: Row(
           children: [
-            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 24)),
+            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 24)),
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Text(sub, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))])),  
-            Icon(Icons.chevron_right, color: Colors.white.withValues(alpha: 0.2)),
+            Icon(Icons.chevron_right, color: Colors.white.withOpacity(0.2)),
           ],
         ),
       ),

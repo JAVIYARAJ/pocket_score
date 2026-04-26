@@ -111,7 +111,7 @@ class _BlurInEntranceState extends State<BlurInEntrance> with SingleTickerProvid
         return ShaderMask(
           shaderCallback: (rect) => const LinearGradient(colors: [Colors.white, Colors.white]).createShader(rect),
           child: ImageFiltered(
-            imageFilter: ColorFilter.mode(Colors.white.withValues(alpha: 1 - (_blur.value / 10).clamp(0, 1)), BlendMode.dstIn),
+            imageFilter: ColorFilter.mode(Colors.white.withOpacity(1 - (_blur.value / 10).clamp(0, 1)), BlendMode.dstIn),
             child: Transform.scale(scale: 1.0 + (_blur.value / 50), child: widget.child),
           ),
         );
@@ -311,7 +311,7 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: Colors.black.withValues(alpha: 0.35),
+      color: Colors.black.withOpacity(0.35),
       child: Stack(
         children: [
           // Confetti
@@ -338,7 +338,7 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                         gradient: LinearGradient(
                           colors: [
                             widget.color,
-                            widget.color.withValues(alpha: 0.8),
+                            widget.color.withOpacity(0.8),
                             widget.color,
                           ],
                           begin: Alignment(_shimmer.value - 1, 0),
@@ -346,10 +346,10 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                         ),
                         borderRadius: BorderRadius.circular(30),
                         boxShadow: [
-                          BoxShadow(color: widget.color.withValues(alpha: 0.4), blurRadius: 40, spreadRadius: 10),
-                          BoxShadow(color: Colors.white.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, -2), spreadRadius: 1),
+                          BoxShadow(color: widget.color.withOpacity(0.4), blurRadius: 40, spreadRadius: 10),
+                          BoxShadow(color: Colors.white.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -2), spreadRadius: 1),
                         ],
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
+                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -367,7 +367,7 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                           Container(
                             margin: const EdgeInsets.only(top: 8),
                             height: 3, width: 60,
-                            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2)),
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), borderRadius: BorderRadius.circular(2)),
                           ),
                         ],
                       ),

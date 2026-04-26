@@ -11,6 +11,7 @@ class Ball extends Equatable {
   final bool isWicket;
   final String? wicketType; // e.g., bowled, caught, run out
   final String? fielderId; // Player who took the catch or did the run out
+  final String? outPlayerId; // The player who actually got out
 
   const Ball({
     required this.runs,
@@ -21,6 +22,7 @@ class Ball extends Equatable {
     this.isWicket = false,
     this.wicketType,
     this.fielderId,
+    this.outPlayerId,
   });
 
   int get totalRuns => runs + extraRuns;
@@ -35,6 +37,7 @@ class Ball extends Equatable {
     'isWicket': isWicket,
     'wicketType': wicketType,
     'fielderId': fielderId,
+    'outPlayerId': outPlayerId,
   };
 
   factory Ball.fromJson(Map<String, dynamic> json) => Ball(
@@ -43,11 +46,12 @@ class Ball extends Equatable {
     extraRuns: json['extraRuns'],
     strikerId: json['strikerId'],
     bowlerId: json['bowlerId'],
-    isWicket: json['isWicket'],
+    isWicket: json['isWicket'] ?? false,
     wicketType: json['wicketType'],
     fielderId: json['fielderId'],
+    outPlayerId: json['outPlayerId'],
   );
 
   @override
-  List<Object?> get props => [runs, type, extraRuns, strikerId, bowlerId, isWicket, wicketType, fielderId];
+  List<Object?> get props => [runs, type, extraRuns, strikerId, bowlerId, isWicket, wicketType, fielderId, outPlayerId];
 }

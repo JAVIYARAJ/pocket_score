@@ -119,13 +119,13 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: isA
-                                ? AppColors.info.withValues(alpha: 0.08)
+                                ? AppColors.info.withOpacity(0.08)
                                 : isB
-                                    ? AppColors.accent.withValues(alpha: 0.08)
+                                    ? AppColors.accent.withOpacity(0.08)
                                     : AppColors.card,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: isA ? AppColors.info.withValues(alpha: 0.2) : isB ? AppColors.accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.04),
+                              color: isA ? AppColors.info.withOpacity(0.2) : isB ? AppColors.accent.withOpacity(0.2) : Colors.white.withOpacity(0.04),
                             ),
                           ),
                           child: Row(
@@ -139,7 +139,7 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                                 child: Container(
                                   width: 36, height: 36,
                                   decoration: BoxDecoration(
-                                    color: isCaptain ? AppColors.warning.withValues(alpha: 0.2) : AppColors.surfaceLight,
+                                    color: isCaptain ? AppColors.warning.withOpacity(0.2) : AppColors.surfaceLight,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   alignment: Alignment.center,
@@ -199,7 +199,7 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
           child: Text(name, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
         ),
         const SizedBox(height: 6),
@@ -214,9 +214,9 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.2) : Colors.transparent,
+          color: selected ? color.withOpacity(0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: selected ? color : Colors.white.withValues(alpha: 0.1)),
+          border: Border.all(color: selected ? color : Colors.white.withOpacity(0.1)),
         ),
         child: Text(
           label.length > 6 ? '${label.substring(0, 5)}..' : label,

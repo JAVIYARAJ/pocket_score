@@ -23,12 +23,12 @@ class TeamPreviewScreen extends StatelessWidget {
           Positioned(
             top: -100,
             left: -100,
-            child: _blurGlow(AppColors.info.withValues(alpha: 0.15)),
+            child: _blurGlow(AppColors.info.withOpacity(0.15)),
           ),
           Positioned(
             bottom: -100,
             right: -100,
-            child: _blurGlow(AppColors.accent.withValues(alpha: 0.15)),
+            child: _blurGlow(AppColors.accent.withOpacity(0.15)),
           ),
 
           SafeArea(
@@ -67,8 +67,8 @@ class TeamPreviewScreen extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    AppColors.bg.withValues(alpha: 0),
-                    AppColors.bg.withValues(alpha: 0.9),
+                    AppColors.bg.withOpacity(0),
+                    AppColors.bg.withOpacity(0.9),
                     AppColors.bg,
                   ],
                 ),
@@ -81,7 +81,7 @@ class TeamPreviewScreen extends StatelessWidget {
                   minimumSize: const Size.fromHeight(60),
                   backgroundColor: AppColors.primary,
                   elevation: 8,
-                  shadowColor: AppColors.primary.withValues(alpha: 0.5),
+                  shadowColor: AppColors.primary.withOpacity(0.5),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -125,7 +125,7 @@ class TeamPreviewScreen extends StatelessWidget {
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
+              backgroundColor: Colors.white.withOpacity(0.05),
               padding: const EdgeInsets.all(12),
             ),
           ),
@@ -158,7 +158,7 @@ class TeamPreviewScreen extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Container(height: 1, decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Colors.white.withValues(alpha: 0), Colors.white10])
+          gradient: LinearGradient(colors: [Colors.white.withOpacity(0), Colors.white10])
         ))),
         Container(
           padding: const EdgeInsets.all(12),
@@ -175,7 +175,7 @@ class TeamPreviewScreen extends StatelessWidget {
           )),
         ),
         Expanded(child: Container(height: 1, decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Colors.white10, Colors.white.withValues(alpha: 0)])
+          gradient: LinearGradient(colors: [Colors.white10, Colors.white.withOpacity(0)])
         ))),
       ],
     );
@@ -184,14 +184,14 @@ class TeamPreviewScreen extends StatelessWidget {
   Widget _buildTeamCard(Team team, Color teamColor, bool isTeamA) {
     return Container(
       decoration: AppDecorations.glassCard(opacity: 0.05).copyWith(
-        border: Border.all(color: teamColor.withValues(alpha: 0.15), width: 1),
+        border: Border.all(color: teamColor.withOpacity(0.15), width: 1),
       ),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: teamColor.withValues(alpha: 0.08),
+              color: teamColor.withOpacity(0.08),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Row(
@@ -199,7 +199,7 @@ class TeamPreviewScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: teamColor.withValues(alpha: 0.2),
+                    color: teamColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(Icons.shield_rounded, color: teamColor, size: 20),
@@ -212,7 +212,7 @@ class TeamPreviewScreen extends StatelessWidget {
                 )),
                 const Spacer(),
                 Text('${team.players.length} PLAYERS', style: TextStyle(
-                  color: teamColor.withValues(alpha: 0.7),
+                  color: teamColor.withOpacity(0.7),
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                 )),
@@ -237,7 +237,7 @@ class TeamPreviewScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.03))),
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.03))),
       ),
       child: Row(
         children: [
@@ -247,7 +247,7 @@ class TeamPreviewScreen extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: isCaptain ? teamColor.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                  color: isCaptain ? teamColor.withOpacity(0.2) : Colors.white.withOpacity(0.05),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
