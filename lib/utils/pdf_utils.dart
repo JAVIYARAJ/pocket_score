@@ -64,7 +64,7 @@ class PdfUtils {
             ),
             pw.SizedBox(height: 30),
 
-            _buildSection(pdf, 'BATTING LEADERS', batters, (p) => p.battingRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Inn', 'Runs', 'Balls', '4s/6s', '50s', 'Avg', 'Pts']),
+            _buildSection(pdf, 'BATTING LEADERS', batters, (p) => p.battingRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Inn', 'Runs', 'Balls', '4s/6s', '50s', 'Avg', 'S/R', 'Pts']),
             pw.SizedBox(height: 30),
             
             _buildSection(pdf, 'BOWLING LEADERS', bowlers, (p) => p.bowlingRankScore?.toStringAsFixed(1) ?? '0.0', ['#', 'Player', 'Mat', 'Inn', 'Overs', 'Runs', 'Wkts', 'Econ', 'Pts']),
@@ -152,6 +152,7 @@ class PdfUtils {
                 '${p.fours}/${p.sixes}',
                 '${p.fifties}',
                 p.average.toStringAsFixed(1),
+                p.strikeRate.toStringAsFixed(1),
                 scoreLabel(p),
               ];
             } else if (title.contains('BOWLING')) {
@@ -198,16 +199,17 @@ class PdfUtils {
           ),
           oddRowDecoration: const pw.BoxDecoration(color: PdfColors.blue50),
           columnWidths: {
-            0: const pw.FixedColumnWidth(20), // Rank
-            1: const pw.FlexColumnWidth(2.5), // Player Name
-            2: const pw.FlexColumnWidth(0.6), 
-            3: const pw.FlexColumnWidth(0.6), 
-            4: const pw.FlexColumnWidth(0.9),
-            5: const pw.FlexColumnWidth(0.9),
-            6: const pw.FlexColumnWidth(0.9),
-            7: const pw.FlexColumnWidth(0.7),   
-            8: const pw.FlexColumnWidth(0.9),   
-            9: const pw.FlexColumnWidth(0.9),   // Score
+            0: const pw.FixedColumnWidth(18), // Rank
+            1: const pw.FlexColumnWidth(2.2), // Player Name
+            2: const pw.FlexColumnWidth(0.5), // Mat
+            3: const pw.FlexColumnWidth(0.5), // Inn
+            4: const pw.FlexColumnWidth(0.8), // Runs
+            5: const pw.FlexColumnWidth(0.8), // Balls
+            6: const pw.FlexColumnWidth(0.8), // 4/6
+            7: const pw.FlexColumnWidth(0.6), // 50s
+            8: const pw.FlexColumnWidth(0.8), // Avg
+            9: const pw.FlexColumnWidth(0.8), // SR
+            10: const pw.FlexColumnWidth(0.8), // Score
           },
           cellAlignments: {
             0: pw.Alignment.center,
@@ -220,6 +222,7 @@ class PdfUtils {
             7: pw.Alignment.centerRight,
             8: pw.Alignment.centerRight,
             9: pw.Alignment.centerRight,
+            10: pw.Alignment.centerRight,
           },
         ),
       ],
