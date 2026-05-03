@@ -173,7 +173,7 @@ class ScorecardView extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _headerRow(['Over', 'Runs', 'Wkts', 'Total']),
+              _headerRow(['Over', 'Bowler', 'Runs', 'Wkts', 'Total'], flexValues: [2, 3, 1, 1, 2]),
               ...inn.overSummaries.asMap().entries.map((entry) {
                 final i = entry.key;
                 final ov = entry.value;
@@ -184,11 +184,12 @@ class ScorecardView extends StatelessWidget {
                   cumulativeWickets += inn.overSummaries[j].wickets;
                 }
                 return _dataRow([
-                  'Over ${ov.overNumber}',
+                  'Ov ${ov.overNumber}',
+                  ov.bowlerName ?? '—',
                   '${ov.runs}',
                   '${ov.wickets}',
                   '$cumulativeRuns/$cumulativeWickets',
-                ]);
+                ], flexValues: [2, 3, 1, 1, 2]);
               }),
             ],
           ),
@@ -269,20 +270,20 @@ class ScorecardView extends StatelessWidget {
     );
   }
 
-  Widget _headerRow(List<String> labels) {
+  Widget _headerRow(List<String> labels, {List<int>? flexValues}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03)),
       child: Row(
         children: labels.asMap().entries.map((e) => Expanded(
-          flex: e.key == 0 ? 3 : 1,
+          flex: flexValues != null ? flexValues[e.key] : (e.key == 0 ? 3 : 1),
           child: Text(e.value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted, letterSpacing: 0.5)),
         )).toList(),
       ),
     );
   }
 
-  Widget _dataRow(List<String> values, {bool highlight = false}) {
+  Widget _dataRow(List<String> values, {bool highlight = false, List<int>? flexValues}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -291,12 +292,12 @@ class ScorecardView extends StatelessWidget {
       ),
       child: Row(
         children: values.asMap().entries.map((e) => Expanded(
-          flex: e.key == 0 ? 3 : 1,
+          flex: flexValues != null ? flexValues[e.key] : (e.key == 0 ? 3 : 1),
           child: Text(
             e.value,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: e.key == 0 || e.key == 1 ? FontWeight.w600 : FontWeight.normal,
+              fontWeight: e.key == 0 || (flexValues == null && e.key == 1) ? FontWeight.w600 : FontWeight.normal,
               color: AppColors.textPrimary,
             ),
             overflow: TextOverflow.ellipsis,

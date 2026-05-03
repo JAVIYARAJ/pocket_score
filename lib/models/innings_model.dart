@@ -8,7 +8,8 @@ class OverSummary {
   final int runs;
   final int wickets;
   final List<Ball> balls;
-  const OverSummary({required this.overNumber, required this.runs, required this.wickets, required this.balls});
+  final String? bowlerName;
+  const OverSummary({required this.overNumber, required this.runs, required this.wickets, required this.balls, this.bowlerName});
 }
 
 /// Individual batsman's stats computed from ball data
@@ -92,11 +93,15 @@ class Innings extends Equatable {
       if (ball.isLegalBall) {
         legalCount++;
         if (legalCount % 6 == 0) {
+          final bowlerId = currentOverBalls.first.bowlerId;
+          final bowlerName = bowlingPlayers.firstWhere((p) => p.id == bowlerId, orElse: () => Player(id: '', name: 'Unknown')).name;
+
           overs.add(OverSummary(
             overNumber: overs.length + 1,
             runs: currentOverRuns,
             wickets: currentOverWickets,
             balls: List.from(currentOverBalls),
+            bowlerName: bowlerName,
           ));
           currentOverRuns = 0;
           currentOverWickets = 0;
@@ -107,11 +112,15 @@ class Innings extends Equatable {
 
     // current incomplete over
     if (currentOverBalls.isNotEmpty) {
+      final bowlerId = currentOverBalls.first.bowlerId;
+      final bowlerName = bowlingPlayers.firstWhere((p) => p.id == bowlerId, orElse: () => Player(id: '', name: 'Unknown')).name;
+
       overs.add(OverSummary(
         overNumber: overs.length + 1,
         runs: currentOverRuns,
         wickets: currentOverWickets,
         balls: List.from(currentOverBalls),
+        bowlerName: bowlerName,
       ));
     }
 

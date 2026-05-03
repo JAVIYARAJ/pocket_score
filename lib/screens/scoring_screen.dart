@@ -525,7 +525,12 @@ class ScoringScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text('OV ${ov.overNumber}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.textMuted)),
-                    const SizedBox(height: 1),
+                    if (ov.bowlerName != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 1),
+                        child: Text(ov.bowlerName!, style: const TextStyle(fontSize: 8, color: AppColors.textSecondary, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                      ),
+                    const SizedBox(height: 2),
                     Text('${ov.runs}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.primaryLight)),
                     if (ov.wickets > 0)
                       Text('${ov.wickets} WKT', style: const TextStyle(fontSize: 8, color: AppColors.wicket, fontWeight: FontWeight.w900)),
