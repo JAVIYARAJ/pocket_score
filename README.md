@@ -1,8 +1,23 @@
-# 🏏 Pocket Score
+<div align="center">
 
-> **Box Cricket Scoring — Reimagined.**
+# 🏏 Pocket Score — Box Cricket Scoring, Reimagined
 
-**Pocket Score** is a sophisticated, high-performance cricket scoring application meticulously crafted for the box cricket ecosystem. It adopts a premium **"Midnight Studio"** design philosophy, blending professional-grade analytics with a cinematic dark-mode interface. From squad building to the final result screen, every interaction is designed to feel premium and fluid.
+[![Flutter](https://img.shields.io/badge/Flutter-3.11.1+-02569B?style=flat-square&logo=flutter&logoColor=white)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?style=flat-square&logo=dart&logoColor=white)](https://dart.dev)
+[![HydratedBloc](https://img.shields.io/badge/HydratedBloc-State%20Mgmt-8B5CF6?style=flat-square)](https://pub.dev/packages/hydrated_bloc)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
+
+*Every ball matters. Every run counts.*
+
+</div>
+
+---
+
+## 📖 What is Pocket Score?
+
+Pocket Score is a sophisticated, high-performance cricket scoring app built specifically for the box cricket ecosystem. It adopts a premium **"Midnight Studio"** design philosophy — blending professional-grade analytics with a cinematic dark-mode interface.
+
+From squad building to the final result screen, every interaction is designed to feel premium and fluid.
 
 ---
 
@@ -10,13 +25,25 @@
 
 | Feature | Description |
 |---|---|
-| 🏆 **Midnight Studio UI** | Stunning dark-mode design with Outfit font and fluid micro-animations |
+| 🏆 **Midnight Studio UI** | Dark-mode design with Outfit font and fluid micro-animations |
 | ⚡ **Pro Scoring Engine** | Ball-by-ball tracking with 4s, 6s, wides, no-balls, free hits & all wicket types |
 | 🎉 **Live Event Animations** | Full-screen FOUR!, SIX!, and OUT! celebration overlays with confetti |
-| 🔄 **Auto-Persistence** | Powered by `HydratedBloc` — your progress is never lost |
+| 🔄 **Auto-Persistence** | Powered by `HydratedBloc` — progress is never lost |
 | 📊 **Career Analytics** | Track strike rates, averages, and economy rates across all matches |
 | 📋 **Match History** | Revisit every game with high-fidelity scorecards |
 | 🎯 **Smart Match Flow** | Squad → Team Selection → Lineup Preview → Toss → Openers → Score |
+
+---
+
+## 🛠 Tech Stack
+
+```
+Framework       →   Flutter 3.11.1+
+State Mgmt      →   flutter_bloc + hydrated_bloc (auto-persistence)
+Local Storage   →   path_provider
+Typography      →   Google Fonts — Outfit
+Models          →   Equatable
+```
 
 ---
 
@@ -24,45 +51,34 @@
 
 ### Prerequisites
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) `^3.11.1`
-- [Dart SDK](https://dart.dev/get-dart)
-- Android Studio / VS Code with Flutter & Dart extensions
+- Flutter SDK `^3.11.1`
+- Dart SDK `3.x`
+- Android Studio or VS Code with Flutter & Dart extensions
 
-### Installation
+### 1. Clone the repository
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/pocket_score.git
-   cd pocket_score
-   ```
+```bash
+git clone https://github.com/your-username/pocket_score.git
+cd pocket_score
+```
 
-2. **Install dependencies:**
-   ```bash
-   flutter pub get
-   ```
+### 2. Install dependencies
 
-3. **Run the app:**
-   ```bash
-   flutter run
-   ```
+```bash
+flutter pub get
+```
 
----
+### 3. Run the app
 
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| **Framework** | [Flutter](https://flutter.dev/) |
-| **State Management** | [flutter_bloc](https://pub.dev/packages/flutter_bloc) + [hydrated_bloc](https://pub.dev/packages/hydrated_bloc) |
-| **Local Persistence** | [path_provider](https://pub.dev/packages/path_provider) |
-| **Typography** | [Google Fonts](https://pub.dev/packages/google_fonts) — Outfit |
-| **Models** | [Equatable](https://pub.dev/packages/equatable) |
+```bash
+flutter run
+```
 
 ---
 
 ## 📱 App Gallery
 
-> *Follow the complete match journey — from squad management to the final scoreboard.*
+> Follow the complete match journey — from squad management to the final scoreboard.
 
 ---
 
@@ -70,7 +86,7 @@
 
 *Your command center. View the latest result, browse match history, and manage your squad roster.*
 
-| Home Screen & Match History | Manage Squad (Add Players) |
+| Home Screen & Match History | Manage Squad |
 | :---: | :---: |
 | ![Home Screen](assets/app_images/image_1.png) | ![Manage Squad](assets/app_images/image_2.png) |
 
@@ -110,7 +126,7 @@
 
 *Handle every cricket scenario with precision — wicket type selection, free hit & no-ball tracking, bowler rotation, and player retirement.*
 
-| Wicket Type Selection | Free Hit / No-Ball | Select Next Bowler | Retire Player |
+| Wicket Type | Free Hit / No-Ball | Next Bowler | Retire Player |
 | :---: | :---: | :---: | :---: |
 | ![Wicket Type](assets/app_images/image_11.png) | ![Free Hit](assets/app_images/image_12.png) | ![Next Bowler](assets/app_images/image_13.png) | ![Retire Player](assets/app_images/image_14.png) |
 
@@ -120,9 +136,34 @@
 
 *Match concluded — view the winner announcement with full scorecard access, then check the career-wide player rankings leaderboard.*
 
-| Match Finished | Player Rankings |
+| Match Result | Player Rankings |
 | :---: | :---: |
 | ![Match Result](assets/app_images/image_15.png) | ![Player Rankings](assets/app_images/image_16.png) |
+
+---
+
+## ⚡ Available Commands
+
+```bash
+flutter run                   # Run on connected device
+flutter run --release         # Release build on device
+flutter build apk             # Android APK
+flutter build ipa             # iOS archive
+flutter pub get               # Install dependencies
+flutter analyze               # Static analysis
+flutter test                  # Run tests
+```
+
+---
+
+## 🗺 Roadmap
+
+- [ ] Online multiplayer scoring (real-time sync)
+- [ ] Tournament bracket management
+- [ ] Custom scoring rules per match
+- [ ] Share scorecards as image/PDF
+- [ ] Player profile pages with career graphs
+- [ ] Dark / light theme toggle
 
 ---
 
@@ -134,7 +175,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 <div align="center">
 
-Built with ❤️ for the Cricket Community
+Built by [Javiya Raj](https://github.com/JAVIYARAJ) — Flutter developer, product builder.
 
 *"Every ball matters. Every run counts."*
 
