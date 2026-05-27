@@ -49,6 +49,38 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- ── Supabase OAuth deep-link callback (Google Sign-In) ───────
+	     After Google auth completes in the browser, Safari redirects back to the
+	     app via this custom URL scheme. Must match SupabaseConfig.redirectUrl
+	     and the Redirect URL registered in Supabase Dashboard.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<!-- Native Google Sign-In callback scheme.
+		     This value equals GOOGLE_IOS_REVERSED_CLIENT_ID in .env
+		     (= the iOS OAuth client ID written in reverse-domain form).
+		     The OS resolves this at launch so it must be a literal string —
+		     update it here whenever GOOGLE_IOS_CLIENT_ID changes in .env.
+		-->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.606870925433-6sp0e00r0cos01ju4k1muu7l5o0mge5i</string>
+			</array>
+		</dict>
+		<!-- Supabase deep-link callback (kept for fallback) -->
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.example.pocketScore</string>
+			</array>
+		</dict>
+	</array>
+
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

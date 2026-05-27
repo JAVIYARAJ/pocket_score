@@ -63,7 +63,7 @@ class PlayerStats {
 
 class RankCalculator {
   static double? calcGullyBattingRank(PlayerStats stats, String scope) {
-    if (stats.inningsBatted < 2) return null; // Min 2 innings
+    if (stats.inningsBatted < 1) return null; // Min 1 innings
 
     // SR (35%)
     double srScore = 0.0;
@@ -103,7 +103,7 @@ class RankCalculator {
   }
 
   static double? calcGullyBowlingRank(PlayerStats stats, String scope) {
-    if (stats.matchesBowled < 2) return null; // Min 2 matches
+    if (stats.matchesBowled < 1) return null; // Min 1 match
 
     // Economy Rate (40%)
     double eco = stats.economy;
@@ -141,7 +141,13 @@ class RankCalculator {
   static double? calcImpactPlayerRank(PlayerStats stats, String scope) {
     final bat = calcGullyBattingRank(stats, scope);
     final bowl = calcGullyBowlingRank(stats, scope);
-    if (bat == null || bowl == null) return null; // Needs both
+
+    // Need at least one discipline ranked
+    if (bat == null && bowl == null) return null;
+
+    // If only one is available, use it at 70% weight (penalised for being one-dimensional)
+    if (bat == null) return bowl! * 0.70;
+    if (bowl == null) return bat * 0.70;
 
     return (bat * 0.5) + (bowl * 0.5);
   }

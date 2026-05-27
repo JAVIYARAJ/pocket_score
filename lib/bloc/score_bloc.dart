@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import '../models/ball_model.dart';
 import '../models/innings_model.dart';
 import '../models/player_model.dart';
+import '../services/match_repository.dart';
 
 // Events
 abstract class ScoreEvent extends Equatable {
@@ -219,8 +220,18 @@ class ScoreState extends Equatable {
 
 // Bloc
 class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
-  ScoreBloc() : super(const ScoreState()) {
+  final MatchRepository _repo;
+
+  /// The current match ID is provided externally so the BLoC can
+  /// push live-score updates to Supabase.
+  String? activeMatchId;
+
+  ScoreBloc(this._repo) : super(const ScoreState()) {
     on<ResetScoreboard>((event, emit) {
+      if (activeMatchId != null) {
+        _repo.deleteLiveScore(activeMatchId!).ignore();
+        activeMatchId = null;
+      }
       emit(const ScoreState());
     });
 
@@ -352,7 +363,7 @@ class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
 
       bool nextBallIsFreeHit = (ball.type == BallType.noBall) || (state.isFreeHit && ball.type == BallType.wide);
 
-      emit(state.copyWith(
+      final nextState = state.copyWith(
         firstInnings: state.isFirstInnings ? updatedInnings : null,
         secondInnings: !state.isFirstInnings ? updatedInnings : null,
         strikerId: newStrikerId,
@@ -363,7 +374,16 @@ class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
         pendingBowlerChange: overJustEnded,
         isFreeHit: nextBallIsFreeHit,
         history: newHistory,
-      ));
+      );
+      emit(nextState);
+
+      // ── Publish live score to Supabase (fire-and-forget) ──
+      if (activeMatchId != null) {
+        _repo.upsertLiveScore(
+          activeMatchId!,
+          nextState.toJson(),
+        ).ignore();
+      }
     });
 
     on<SelectNextBatsman>((event, emit) {
@@ -452,7 +472,10 @@ class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
   }
 
   @override
-  ScoreState? fromJson(Map<String, dynamic> json) { try { return ScoreState.fromJson(json); } catch (_) { return null; } }
+  ScoreState? fromJson(Map<String, dynamic> json) {
+    try { return ScoreState.fromJson(json); } catch (_) { return null; }
+  }
+
   @override
   Map<String, dynamic>? toJson(ScoreState state) => state.toJson();
 }

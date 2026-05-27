@@ -1,8 +1,9 @@
 import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/player_model.dart';
+import '../services/player_repository.dart';
 
-// Events
+// ── Events ─────────────────────────────────────────────────────
 abstract class PlayerEvent extends Equatable {
   @override
   List<Object?> get props => [];
@@ -31,10 +32,14 @@ class RemovePlayer extends PlayerEvent {
   List<Object?> get props => [playerId];
 }
 
-// State
+/// Fired once after sign-in to pull the player list from Supabase.
+class SyncPlayersFromSupabase extends PlayerEvent {}
+
+// ── State ──────────────────────────────────────────────────────
 class PlayerState extends Equatable {
   final List<Player> players;
   const PlayerState({this.players = const []});
+
   @override
   List<Object?> get props => [players];
 
@@ -43,42 +48,72 @@ class PlayerState extends Equatable {
   };
 
   factory PlayerState.fromJson(Map<String, dynamic> json) => PlayerState(
-    players: (json['players'] as List?)?.map((p) => Player.fromJson(p)).toList() ?? const [],
+    players: (json['players'] as List?)
+        ?.map((p) => Player.fromJson(p))
+        .toList() ??
+        const [],
   );
 }
 
-// Bloc
+// ── Bloc ───────────────────────────────────────────────────────
 class PlayerBloc extends HydratedBloc<PlayerEvent, PlayerState> {
-  PlayerBloc() : super(const PlayerState()) {
-    on<AddPlayer>((event, emit) {
+  final PlayerRepository _repo;
+
+  PlayerBloc(this._repo) : super(const PlayerState()) {
+    // ── Sync from Supabase on sign-in ─────────────────────
+    on<SyncPlayersFromSupabase>((event, emit) async {
+      try {
+        final players = await _repo.getAll();
+        if (players.isNotEmpty) emit(PlayerState(players: players));
+      } catch (_) {
+        // Silently fail — local cache still works offline
+      }
+    });
+
+    // ── Add a single player ────────────────────────────────
+    on<AddPlayer>((event, emit) async {
       final newPlayer = Player(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id  : DateTime.now().microsecondsSinceEpoch.toString(),
         name: event.name,
         role: event.role,
       );
-      emit(PlayerState(players: [...state.players, newPlayer]));
+      final updated = [...state.players, newPlayer];
+      emit(PlayerState(players: updated));
+      // Cloud sync (fire-and-forget)
+      _repo.upsert(newPlayer).ignore();
     });
 
-    on<AddPlayers>((event, emit) {
-      final newPlayers = event.names.where((name) => name.trim().isNotEmpty).map((name) {
-        return Player(
-          id: (DateTime.now().microsecondsSinceEpoch + event.names.indexOf(name)).toString(),
-          name: name.trim(),
-          role: event.role,
-        );
-      }).toList();
-      emit(PlayerState(players: [...state.players, ...newPlayers]));
+    // ── Add many players at once ───────────────────────────
+    on<AddPlayers>((event, emit) async {
+      final newPlayers = event.names
+          .where((n) => n.trim().isNotEmpty)
+          .toList()
+          .asMap()
+          .entries
+          .map((e) => Player(
+                id  : (DateTime.now().microsecondsSinceEpoch + e.key).toString(),
+                name: e.value.trim(),
+                role: event.role,
+              ))
+          .toList();
+      final updated = [...state.players, ...newPlayers];
+      emit(PlayerState(players: updated));
+      _repo.upsertAll(newPlayers).ignore();
     });
 
-    on<RemovePlayer>((event, emit) {
+    // ── Remove a player ────────────────────────────────────
+    on<RemovePlayer>((event, emit) async {
       emit(PlayerState(
         players: state.players.where((p) => p.id != event.playerId).toList(),
       ));
+      _repo.delete(event.playerId).ignore();
     });
   }
 
   @override
-  PlayerState? fromJson(Map<String, dynamic> json) => PlayerState.fromJson(json);
+  PlayerState? fromJson(Map<String, dynamic> json) {
+    try { return PlayerState.fromJson(json); } catch (_) { return null; }
+  }
 
   @override
   Map<String, dynamic>? toJson(PlayerState state) => state.toJson();

@@ -72,7 +72,7 @@ class ScorecardView extends StatelessWidget {
                 children: [
                   Text('${inn.totalRuns}/${inn.totalWickets}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
                   const SizedBox(width: 6),
-                  Text('(${inn.overDisplay} ov)', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7))),
+                  Text('(${inn.overDisplay} ov)', style: TextStyle(fontSize: 13, color: Colors.white70)),
                 ],
               ),
             ],
@@ -203,7 +203,7 @@ class ScorecardView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: isNotOut ? AppColors.accent.withValues(alpha: 0.04) : null,
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04))),
+        border: const Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: [
@@ -272,7 +272,7 @@ class ScorecardView extends StatelessWidget {
   Widget _headerRow(List<String> labels) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03)),
+      decoration: const BoxDecoration(color: AppColors.surfaceLight),
       child: Row(
         children: labels.asMap().entries.map((e) => Expanded(
           flex: e.key == 0 ? 3 : 1,
@@ -287,7 +287,7 @@ class ScorecardView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: highlight ? AppColors.accent.withValues(alpha: 0.04) : null,
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.04))),
+        border: const Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: values.asMap().entries.map((e) => Expanded(
@@ -337,24 +337,26 @@ class ScorecardView extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.1),
+        gradient: AppColors.goldGradient,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
+        boxShadow: [BoxShadow(color: AppColors.accent.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(color: Colors.amber, shape: BoxShape.circle),
-            child: const Icon(Icons.stars, color: Colors.white, size: 20),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
+            child: const Icon(Icons.stars_rounded, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('PLAYER OF THE MATCH', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.amber)),
-              Text(mom.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('PLAYER OF THE MATCH', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1, color: Colors.white70)),
+                Text(mom.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+              ],
+            ),
           ),
         ],
       ),

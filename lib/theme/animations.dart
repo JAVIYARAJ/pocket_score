@@ -132,25 +132,27 @@ class AnimatedCounter extends StatelessWidget {
     super.key,
     required this.value,
     this.style,
-    this.duration = const Duration(milliseconds: 350),
+    this.duration = const Duration(milliseconds: 200),
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
       duration: duration,
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeIn,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (Widget child, Animation<double> animation) {
-        final isEntering = child.key == ValueKey<int>(value);
         return FadeTransition(
           opacity: animation,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: Offset(0, isEntering ? 0.5 : -0.5),
+              begin: const Offset(0, 0.3),
               end: Offset.zero,
             ).animate(animation),
-            child: child,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.7, end: 1.0).animate(animation),
+              child: child,
+            ),
           ),
         );
       },

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
+import '../theme/animations.dart';
 import 'toss_screen.dart';
 
 class TeamPreviewScreen extends StatelessWidget {
@@ -16,140 +18,145 @@ class TeamPreviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background Glows
-          Positioned(
-            top: -100,
-            left: -100,
-            child: _blurGlow(AppColors.info.withValues(alpha: 0.15)),
-          ),
-          Positioned(
-            bottom: -100,
-            right: -100,
-            child: _blurGlow(AppColors.accent.withValues(alpha: 0.15)),
-          ),
-
-          SafeArea(
-            child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Stack(
+          children: [
+            Column(
               children: [
                 _buildHeader(context),
                 Expanded(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
                     child: Column(
                       children: [
-                        _buildTeamCard(teamA, AppColors.info, true),
-                        const SizedBox(height: 24),
+                        FadeInEntrance(
+                          delay: const Duration(milliseconds: 100),
+                          offset: const Offset(0, 20),
+                          child: _buildTeamCard(teamA, AppColors.info, true),
+                        ),
+                        const SizedBox(height: 20),
                         _buildVsDivider(),
-                        const SizedBox(height: 24),
-                        _buildTeamCard(teamB, AppColors.accent, false),
-                        const SizedBox(height: 100), // Space for button
+                        const SizedBox(height: 20),
+                        FadeInEntrance(
+                          delay: const Duration(milliseconds: 180),
+                          offset: const Offset(0, 20),
+                          child: _buildTeamCard(teamB, AppColors.accent, false),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ],
             ),
-          ),
 
-          // Bottom Action
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.bg.withValues(alpha: 0),
-                    AppColors.bg.withValues(alpha: 0.9),
-                    AppColors.bg,
-                  ],
+            // ── Sticky bottom button ────────────────────────────
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  20, 16, 20, MediaQuery.of(context).padding.bottom + 20,
                 ),
-              ),
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const TossScreen()));
-                },
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(60),
-                  backgroundColor: AppColors.primary,
-                  elevation: 8,
-                  shadowColor: AppColors.primary.withValues(alpha: 0.5),
+                decoration: BoxDecoration(
+                  color: AppColors.bg,
+                  border: const Border(top: BorderSide(color: AppColors.border)),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Looks Good, Start Match'),
-                    SizedBox(width: 12),
-                    Icon(Icons.sports_cricket_rounded),
-                  ],
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context, MaterialPageRoute(builder: (_) => const TossScreen()),
+                    ),
+                    icon: const Icon(Icons.sports_cricket_rounded, size: 20),
+                    label: const Text('Looks Good — Start Match!', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(56),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _blurGlow(Color color) {
-    return Container(
-      width: 300,
-      height: 300,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: color,
-            blurRadius: 100,
-            spreadRadius: 50,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildHeader(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Container(
-      padding: const EdgeInsets.fromLTRB(10, 10, 20, 10),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.05),
-              padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 24),
+      decoration: const BoxDecoration(
+        gradient: AppColors.headerGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
+      child: FadeInEntrance(
+        offset: const Offset(0, -20),
+        child: Row(
+          children: [
+            TapBounce(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+              ),
             ),
-          ),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('STEP 2 OF 4', style: TextStyle(fontSize: 11, letterSpacing: 3, color: Colors.white60, fontWeight: FontWeight.w700)),
+                  SizedBox(height: 2),
+                  Text('Lineup Preview', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
+                ],
+              ),
+            ),
+            // Team count badges
+            Row(
               children: [
-                Text('CHALLENGE ACCEPTED', style: TextStyle(
-                  color: AppColors.primaryLight,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                )),
-                SizedBox(height: 2),
-                Text('Lineup Preview', style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5,
-                )),
+                _countBadge(teamA.players.length, AppColors.info),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6),
+                  child: Text('vs', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+                _countBadge(teamB.players.length, AppColors.accentLight),
               ],
             ),
-          ),
-          const SizedBox(width: 48), // Balance for back button
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _countBadge(int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
       ),
     );
   }
@@ -157,25 +164,21 @@ class TeamPreviewScreen extends StatelessWidget {
   Widget _buildVsDivider() {
     return Row(
       children: [
-        Expanded(child: Container(height: 1, decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Colors.white.withValues(alpha: 0), Colors.white10])
+        Expanded(child: Container(height: 1, decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [Colors.transparent, AppColors.border]),
         ))),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white10),
             color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
+            boxShadow: const [BoxShadow(color: Color(0x08000000), blurRadius: 8, offset: Offset(0, 2))],
           ),
-          child: const Text('VS', style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-            color: AppColors.textMuted,
-            letterSpacing: 1,
-          )),
+          child: const Text('VS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppColors.textMuted, letterSpacing: 1)),
         ),
-        Expanded(child: Container(height: 1, decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Colors.white10, Colors.white.withValues(alpha: 0)])
+        Expanded(child: Container(height: 1, decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [AppColors.border, Colors.transparent]),
         ))),
       ],
     );
@@ -183,114 +186,160 @@ class TeamPreviewScreen extends StatelessWidget {
 
   Widget _buildTeamCard(Team team, Color teamColor, bool isTeamA) {
     return Container(
-      decoration: AppDecorations.glassCard(opacity: 0.05).copyWith(
-        border: Border.all(color: teamColor.withValues(alpha: 0.15), width: 1),
-      ),
+      decoration: AppDecorations.card(),
       child: Column(
         children: [
+          // Team header
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: teamColor.withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  width: 40, height: 40,
                   decoration: BoxDecoration(
                     color: teamColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.shield_rounded, color: teamColor, size: 20),
+                  alignment: Alignment.center,
+                  child: Text(
+                    team.name[0].toUpperCase(),
+                    style: TextStyle(color: teamColor, fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
                 ),
                 const SizedBox(width: 12),
-                Text(team.name.toUpperCase(), style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                )),
-                const Spacer(),
-                Text('${team.players.length} PLAYERS', style: TextStyle(
-                  color: teamColor.withValues(alpha: 0.7),
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                )),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        team.name,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      ),
+                      Text(
+                        '${team.players.length} players',
+                        style: TextStyle(fontSize: 12, color: teamColor, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(7),
+                  decoration: BoxDecoration(color: teamColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(Icons.shield_rounded, color: teamColor, size: 18),
+                ),
               ],
             ),
           ),
-          ...team.players.map((p) => _buildPlayerRow(p, team.captainId == p.id, teamColor)),
+          // Player rows
+          ...team.players.asMap().entries.map((e) =>
+            _buildPlayerRow(e.value, team.captainId == e.value.id, teamColor, e.key == team.players.length - 1),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildPlayerRow(Player p, bool isCaptain, Color teamColor) {
+  Widget _buildPlayerRow(Player p, bool isCaptain, Color teamColor, bool isLast) {
     IconData roleIcon;
-    switch(p.role) {
-      case PlayerRole.batsman: roleIcon = Icons.sports_cricket_rounded; break;
-      case PlayerRole.bowler: roleIcon = Icons.adjust_rounded; break;
-      case PlayerRole.allRounder: roleIcon = Icons.sports_baseball_rounded; break;
-      case PlayerRole.wicketKeeper: roleIcon = Icons.front_hand_rounded; break;
+    String roleLabel;
+    switch (p.role) {
+      case PlayerRole.batsman:      roleIcon = Icons.sports_cricket_rounded;   roleLabel = 'BAT'; break;
+      case PlayerRole.bowler:       roleIcon = Icons.sports_baseball_rounded;  roleLabel = 'BOWL'; break;
+      case PlayerRole.allRounder:   roleIcon = Icons.star_rounded;             roleLabel = 'AR'; break;
+      case PlayerRole.wicketKeeper: roleIcon = Icons.front_hand_rounded;       roleLabel = 'WK'; break;
+    }
+
+    Color roleColor;
+    switch (p.role) {
+      case PlayerRole.batsman:      roleColor = AppColors.info; break;
+      case PlayerRole.bowler:       roleColor = AppColors.danger; break;
+      case PlayerRole.allRounder:   roleColor = AppColors.accent; break;
+      case PlayerRole.wicketKeeper: roleColor = AppColors.warning; break;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.03))),
+        border: Border(
+          top: const BorderSide(color: AppColors.border),
+          bottom: isLast ? BorderSide.none : BorderSide.none,
+        ),
       ),
       child: Row(
         children: [
+          // Avatar
           Stack(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 38, height: 38,
                 decoration: BoxDecoration(
-                  color: isCaptain ? teamColor.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                  color: isCaptain ? teamColor.withValues(alpha: 0.15) : AppColors.surfaceLight,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Text(p.name[0].toUpperCase(), style: TextStyle(
-                  color: isCaptain ? teamColor : AppColors.textSecondary,
-                  fontWeight: FontWeight.bold,
-                )),
+                child: Text(
+                  p.name[0].toUpperCase(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: isCaptain ? teamColor : AppColors.textMuted,
+                    fontSize: 14,
+                  ),
+                ),
               ),
               if (isCaptain)
                 Positioned(
-                  right: 0,
-                  bottom: 0,
+                  right: 0, bottom: 0,
                   child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(color: AppColors.warning, shape: BoxShape.circle, border: Border.all(color: AppColors.bg, width: 2)),
-                    child: const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                    width: 14, height: 14,
+                    decoration: BoxDecoration(
+                      color: AppColors.warning,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.surface, width: 1.5),
+                    ),
+                    child: const Icon(Icons.star_rounded, size: 8, color: Colors.white),
                   ),
                 ),
             ],
           ),
           const SizedBox(width: 12),
+          // Name
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(p.name, style: TextStyle(
-                  fontWeight: isCaptain ? FontWeight.bold : FontWeight.w500,
-                  fontSize: 15,
-                  color: isCaptain ? Colors.white : AppColors.textPrimary,
-                )),
+                Text(
+                  p.name,
+                  style: TextStyle(
+                    fontWeight: isCaptain ? FontWeight.w700 : FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
                 if (isCaptain)
-                  Text('CAPTAIN', style: TextStyle(color: teamColor, fontSize: 8, fontWeight: FontWeight.w600, letterSpacing: 1)),
+                  Text('Captain', style: TextStyle(color: teamColor, fontSize: 10, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
-          Icon(roleIcon, size: 14, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          Text(p.role.name.toUpperCase(), style: const TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          )),
+          // Role badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: roleColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(roleIcon, size: 11, color: roleColor),
+                const SizedBox(width: 4),
+                Text(roleLabel, style: TextStyle(fontSize: 10, color: roleColor, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              ],
+            ),
+          ),
         ],
       ),
     );
