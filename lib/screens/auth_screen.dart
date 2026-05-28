@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../bloc/auth_cubit.dart' show AuthCubit, AuthError, AuthLoading, PocketAuthState;
+import '../bloc/auth_cubit.dart' show AuthBloc, AuthError, AuthLoading, PocketAuthState, SignInWithGoogle;
 import '../theme/app_theme.dart';
 
 class AuthScreen extends StatelessWidget {
@@ -18,7 +18,7 @@ class AuthScreen extends StatelessWidget {
       ),
       child: Scaffold(
         backgroundColor: AppColors.bg,
-        body: BlocListener<AuthCubit, PocketAuthState>(
+        body: BlocListener<AuthBloc, PocketAuthState>(
           listener: (context, state) {
             if (state is AuthError) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -31,7 +31,7 @@ class AuthScreen extends StatelessWidget {
               );
             }
           },
-          child: BlocBuilder<AuthCubit, PocketAuthState>(
+          child: BlocBuilder<AuthBloc, PocketAuthState>(
             builder: (context, state) {
               return Stack(
                 children: [
@@ -178,9 +178,14 @@ class AuthScreen extends StatelessWidget {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
-              color: isLoading ? AppColors.surfaceLight : Colors.white,
+              color: isLoading
+                  ? AppColors.primary.withValues(alpha: 0.08)
+                  : Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border, width: 1.5),
+              border: Border.all(
+                color: isLoading ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border,
+                width: 1.5,
+              ),
               boxShadow: isLoading
                   ? []
                   : [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 3))],
@@ -190,69 +195,64 @@ class AuthScreen extends StatelessWidget {
               child: InkWell(
                 onTap: isLoading
                     ? null
-                    : () => context.read<AuthCubit>().signInWithGoogle(),
+                    : () => context.read<AuthBloc>().add(const SignInWithGoogle()),
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: isLoading
-                      ? const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 20, height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: isLoading
+                        ? const Row(
+                            key: ValueKey('loading'),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 14),
-                            Text(
-                              'Opening Google Sign-In…',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                            ),
-                          ],
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Official Google multicolor logo
-                            SvgPicture.asset(
-                              'assets/icons/google_logo.svg',
-                              width: 24,
-                              height: 24,
-                            ),
-                            const SizedBox(width: 14),
-                            const Text(
-                              'Continue with Google',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
+                              SizedBox(width: 12),
+                              Text(
+                                'Signing in…',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          )
+                        : Row(
+                            key: const ValueKey('idle'),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SvgPicture.asset(
+                                'assets/icons/google_logo.svg',
+                                width: 22,
+                                height: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Continue with Google',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
           ),
 
           const SizedBox(height: 20),
-
-          // ── Divider ─────────────────────────────────────────
-          Row(
-            children: [
-              Expanded(child: Container(height: 1, color: AppColors.border)),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: Text('More providers coming soon',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-              ),
-              Expanded(child: Container(height: 1, color: AppColors.border)),
-            ],
-          ),
-
-          const SizedBox(height: 20),
+          
 
           // ── Info strip ──────────────────────────────────────
           Container(

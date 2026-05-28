@@ -335,7 +335,9 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                   child: Transform.scale(
                     scale: _scale.value,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                      width: 280,
+                      height: 125,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
@@ -354,21 +356,23 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                         border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
                       ),
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             widget.text,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 48,
+                              fontSize: 38,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 4,
+                              letterSpacing: 2,
                               shadows: [Shadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8)],
                             ),
                           ),
                           Container(
                             margin: const EdgeInsets.only(top: 8),
-                            height: 3, width: 60,
+                            height: 3, width: 45,
                             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2)),
                           ),
                         ],

@@ -1,10 +1,16 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../bloc/group_cubit.dart';
-import '../bloc/player_bloc.dart';
+import '../bloc/auth_cubit.dart' show AuthBloc;
+import '../bloc/group_cubit.dart' show GroupBloc, LeaveGroupEvent, DeleteGroupEvent;
 import '../models/group_model.dart';
 import '../models/match_models.dart';
 import '../services/group_repository.dart';
@@ -13,8 +19,7 @@ import '../theme/app_theme.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
 import '../widgets/leaderboard_widgets.dart';
-import '../widgets/scorecard_widget.dart';
-import 'live_score_screen.dart';
+import '../widgets/premium_header.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GroupDetailScreen — 3-tab view: Matches | Leaderboard | Members
@@ -45,7 +50,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     super.dispose();
   }
 
-  // ── Leave group dialog ────────────────────────────────────────────────────
+  // ── Leave group ───────────────────────────────────────────────────────────
   Future<void> _confirmLeave() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -53,36 +58,66 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Leave Group',
-            style: TextStyle(
-                fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         content: Text(
-          'Are you sure you want to leave "${widget.group.name}"? You can rejoin using the invite code.',
-          style:
-              const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+          'Are you sure you want to leave "${widget.group.name}"? You can rejoin with the invite code.',
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textMuted)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Leave',
-                style: TextStyle(
-                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+                style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
     if (confirmed == true && mounted) {
-      await context.read<GroupCubit>().leaveGroup(widget.group.id);
-      if (mounted) Navigator.pop(context);
+      context.read<GroupBloc>().add(LeaveGroupEvent(widget.group.id));
+      if (mounted) context.pop();
+    }
+  }
+
+  // ── Delete group (admin only) ─────────────────────────────────────────────
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Group',
+            style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        content: Text(
+          'Permanently delete "${widget.group.name}"? All members will be removed. Match history is kept but de-associated from this group.',
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      context.read<GroupBloc>().add(DeleteGroupEvent(widget.group.id));
+      if (mounted) context.pop();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = widget.group.createdBy == context.read<AuthBloc>().userId;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -96,7 +131,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
             _GroupDetailHeader(
               group: widget.group,
               tabController: _tab,
+              isAdmin: isAdmin,
               onLeave: _confirmLeave,
+              onDelete: _confirmDelete,
             ),
             Expanded(
               child: TabBarView(
@@ -121,160 +158,338 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
 class _GroupDetailHeader extends StatelessWidget {
   final Group group;
   final TabController tabController;
+  final bool isAdmin;
   final VoidCallback onLeave;
+  final VoidCallback onDelete;
 
   const _GroupDetailHeader({
     required this.group,
     required this.tabController,
+    required this.isAdmin,
     required this.onLeave,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(0)),
+    return PremiumHeader(
+      title: group.name,
+      bottomRadius: 0,
+      subtitleWidget: TapBounce(
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: group.inviteCode));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Invite code "${group.inviteCode}" copied!'),
+              backgroundColor: AppColors.success,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('INVITE: ',
+                style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 1,
+                    color: Colors.white60,
+                    fontWeight: FontWeight.w800)),
+            Text(group.inviteCode,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1.5)),
+            const SizedBox(width: 6),
+            const Icon(Icons.copy_rounded, size: 12, color: Colors.white70),
+          ],
+        ),
       ),
-      child: Column(
+      trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Top row: back, name, invite code, overflow ──────────
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-                20, MediaQuery.of(context).padding.top + 16, 20, 12),
-            child: FadeInEntrance(
-              delay: const Duration(milliseconds: 80),
-              offset: const Offset(0, -16),
-              child: Row(
+          // QR code button
+          TapBounce(
+            onTap: () => _showQrSheet(context, group),
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.qr_code_rounded,
+                  color: Colors.white, size: 20),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Overflow menu
+          TapBounce(
+            onTap: () => _showOptionsMenu(context),
+            child: Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.more_vert_rounded,
+                  color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
+      // Stack lets the TabBar fill the full width while the icons are
+      // overlaid at the edges — tab labels are never clipped.
+      bottomChild: SizedBox(
+        height: 64, // Slightly taller for a nice pitch display
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 1. Realistic Pitch Background
+            Positioned.fill(
+              child: CustomPaint(
+                painter: RealisticPitchPainter(),
+              ),
+            ),
+            
+            // 2. TabBar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 46),
+              child: TabBar(
+                controller: tabController,
+                dividerColor: Colors.transparent,
+                indicator: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+                ),
+                indicatorPadding: const EdgeInsets.symmetric(vertical: -4, horizontal: -10),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white.withValues(alpha: 0.65),
+                labelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900),
+                unselectedLabelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                tabs: const [
+                  Tab(text: 'Matches'),
+                  Tab(text: 'Leaderboard'),
+                  Tab(text: 'Members'),
+                ],
+              ),
+            ),
+
+            // 3. Left Knocked Wicket (placed exactly at the bowling crease center)
+            Positioned(
+              left: 10, // Centers the 32px wide image roughly at x = 26
+              top: 10, // Centers it vertically
+              child: Stack(
+                alignment: Alignment.bottomCenter,
                 children: [
-                  TapBounce(
-                    onTap: () => Navigator.pop(context),
+                  // Ground Shadow
+                  Positioned(
+                    bottom: 0,
                     child: Container(
-                      padding: const EdgeInsets.all(8),
+                      width: 20, height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('GROUP',
-                            style: TextStyle(
-                                fontSize: 10,
-                                letterSpacing: 2.5,
-                                color: Colors.white60,
-                                fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 2),
-                        Text(group.name,
-                            style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: -0.3),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                  // Invite code chip + copy button
-                  TapBounce(
-                    onTap: () {
-                      Clipboard.setData(
-                          ClipboardData(text: group.inviteCode));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                              'Invite code "${group.inviteCode}" copied!'),
-                          backgroundColor: AppColors.success,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(group.inviteCode,
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 2)),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.copy_rounded,
-                              size: 14, color: Colors.white70),
-                        ],
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: const BorderRadius.all(Radius.elliptical(10, 2)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Overflow menu
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded,
-                        color: Colors.white),
-                    color: AppColors.surface,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                    onSelected: (val) {
-                      if (val == 'leave') onLeave();
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'leave',
-                        child: Row(
-                          children: [
-                            Icon(Icons.exit_to_app_rounded,
-                                color: AppColors.danger, size: 18),
-                            SizedBox(width: 10),
-                            Text('Leave Group',
-                                style: TextStyle(
-                                    color: AppColors.danger,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Image.asset(
+                      'assets/icons/wicket_out_icon.png',
+                      height: 38,
+                      color: Colors.white,
+                      colorBlendMode: BlendMode.srcIn,
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
 
-          // ── TabBar ─────────────────────────────────────────────
-          TabBar(
-            controller: tabController,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white54,
-            labelStyle: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700),
-            unselectedLabelStyle:
-                const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            indicatorColor: Colors.white,
-            indicatorWeight: 2.5,
-            indicatorSize: TabBarIndicatorSize.label,
-            tabs: const [
-              Tab(text: 'Matches'),
-              Tab(text: 'Leaderboard'),
-              Tab(text: 'Members'),
-            ],
-          ),
-        ],
+            // 4. Right Standing Wicket
+            Positioned(
+              right: 10, 
+              top: 10,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Positioned(
+                    bottom: 0,
+                    child: Container(
+                      width: 16, height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: const BorderRadius.all(Radius.elliptical(8, 2)),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Image.asset(
+                      'assets/icons/wickets.png',
+                      height: 34,
+                      color: Colors.white,
+                      colorBlendMode: BlendMode.srcIn,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  void _showQrSheet(BuildContext context, Group group) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _QrInviteSheet(group: group),
+    );
+  }
+
+  void _showOptionsMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2.5),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text('Group Options',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary)),
+                const SizedBox(height: 20),
+                if (isAdmin) ...[
+                  // ── Admin: Delete Group ──────────────────────────────
+                  TapBounce(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onDelete();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: AppColors.danger.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                                color: AppColors.danger,
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.delete_forever_rounded,
+                                color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Delete Group',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.danger)),
+                                SizedBox(height: 2),
+                                Text('Permanently removes the group',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.danger),
+                        ],
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  // ── Member: Leave Group ──────────────────────────────
+                  TapBounce(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onLeave();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: AppColors.danger.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                                color: AppColors.danger,
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.exit_to_app_rounded,
+                                color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Leave Group',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.danger)),
+                                SizedBox(height: 2),
+                                Text('You can rejoin with the invite code',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.danger),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -384,19 +599,13 @@ class _GroupMatchCard extends StatelessWidget {
     return TapBounce(
       onTap: () {
         if (isLive) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LiveScoreScreen(
-                matchId: match.id,
-                teamAName: match.teamAName,
-                teamBName: match.teamBName,
-              ),
-            ),
-          );
+          context.push('/live/${match.id}', extra: {
+            'teamAName': match.teamAName,
+            'teamBName': match.teamBName,
+          });
         } else if (isCompleted && match.scoreData != null) {
           final state = ScoreState.fromJson(match.scoreData!);
-          ScorecardView.showAsBottomSheet(context, state);
+          context.push('/scorecard', extra: state);
         }
       },
       child: Container(
@@ -589,7 +798,13 @@ class _LeaderboardTab extends StatefulWidget {
 
 class _LeaderboardTabState extends State<_LeaderboardTab>
     with AutomaticKeepAliveClientMixin {
-  int _tabIndex = 0; // 0=Batters, 1=Bowlers, 2=Impact
+  final ValueNotifier<int> _tabNotifier = ValueNotifier<int>(0);
+
+  @override
+  void dispose() {
+    _tabNotifier.dispose();
+    super.dispose();
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -613,100 +828,142 @@ class _LeaderboardTabState extends State<_LeaderboardTab>
               sub: snap.error.toString());
         }
         final matches = snap.data ?? const [];
-        return BlocBuilder<PlayerBloc, PlayerState>(
-          builder: (context, pState) {
-            final statsMap = calculateAllPlayerStats(
-              matches,
-              pState.players,
-              scopeGroupId: widget.groupId,
-            );
-            final statsList =
+        final statsMap = calculateAllPlayerStats(
+          matches,
+          const [],
+          scopeGroupId: widget.groupId,
+        );
+            final baseStatsList =
                 statsMap.values.where((s) => s.matches > 0).toList();
 
-            statsList.sort((a, b) {
-              double sA = _tabIndex == 0
-                  ? (a.battingRankScore ?? -1.0)
-                  : _tabIndex == 1
-                      ? (a.bowlingRankScore ?? -1.0)
-                      : (a.impactRankScore ?? -1.0);
-              double sB = _tabIndex == 0
-                  ? (b.battingRankScore ?? -1.0)
-                  : _tabIndex == 1
-                      ? (b.bowlingRankScore ?? -1.0)
-                      : (b.impactRankScore ?? -1.0);
-              return sB.compareTo(sA);
-            });
+            return ValueListenableBuilder<int>(
+              valueListenable: _tabNotifier,
+              builder: (context, tabIndex, child) {
+                final statsList = List<PlayerStats>.from(baseStatsList);
+                statsList.sort((a, b) {
+                  double sA = tabIndex == 0
+                      ? (a.battingRankScore ?? -1.0)
+                      : tabIndex == 1
+                          ? (a.bowlingRankScore ?? -1.0)
+                          : (a.impactRankScore ?? -1.0);
+                  double sB = tabIndex == 0
+                      ? (b.battingRankScore ?? -1.0)
+                      : tabIndex == 1
+                          ? (b.bowlingRankScore ?? -1.0)
+                          : (b.impactRankScore ?? -1.0);
+                  return sB.compareTo(sA);
+                });
 
-            return Column(
-              children: [
-                // Tab selector
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
+                return Column(
+                  children: [
+                    // Tab selector
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color:
-                              AppColors.surfaceLight.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                              color:
-                                  AppColors.border.withValues(alpha: 0.5)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _tabChip('Batters', 0),
-                            _tabChip('Bowlers', 1),
-                            _tabChip('Impact', 2),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
                           ],
+                          border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final tabWidth = constraints.maxWidth / 3;
+                            return SizedBox(
+                              height: 38,
+                              child: Stack(
+                                children: [
+                                  AnimatedPositioned(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.fastOutSlowIn,
+                                    left: tabIndex * tabWidth,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: tabWidth,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        borderRadius: BorderRadius.circular(24),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primary.withValues(alpha: 0.25),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      _tabChip('Batters', 0, tabIndex),
+                                      _tabChip('Bowlers', 1, tabIndex),
+                                      _tabChip('Impact', 2, tabIndex),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                // List
-                Expanded(
-                  child: statsList.isEmpty
-                      ? const _CentreMsg(
-                          icon: Icons.analytics_outlined,
-                          title: 'No stats yet',
-                          sub: 'Complete matches in this group to see rankings.',
-                        )
-                      : _LeaderboardList(
-                          statsList: statsList,
-                          tabIndex: _tabIndex,
-                          groupId: widget.groupId,
-                        ),
-                ),
-              ],
+                    ),
+                    // List
+                    Expanded(
+                      child: statsList.isEmpty
+                          ? const _CentreMsg(
+                              icon: Icons.analytics_outlined,
+                              title: 'No stats yet',
+                              sub: 'Complete matches in this group to see rankings.',
+                            )
+                          : AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 400),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              child: _LeaderboardList(
+                                key: ValueKey('list_tab_$tabIndex'),
+                                statsList: statsList,
+                                tabIndex: tabIndex,
+                                groupId: widget.groupId,
+                              ),
+                            ),
+                    ),
+                  ],
+                );
+              },
             );
-          },
-        );
       },
     );
   }
 
-  Widget _tabChip(String label, int i) {
-    final active = _tabIndex == i;
-    return TapBounce(
-      onTap: () => setState(() => _tabIndex = i),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label,
+  Widget _tabChip(String label, int i, int currentIndex) {
+    final active = currentIndex == i;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _tabNotifier.value = i,
+        child: Container(
+          height: 38,
+          alignment: Alignment.center,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
             style: TextStyle(
-                fontSize: 12,
-                fontWeight:
-                    active ? FontWeight.w800 : FontWeight.w600,
-                color: active ? Colors.white : AppColors.textMuted)),
+              fontSize: 13,
+              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              color: active ? Colors.white : AppColors.textMuted,
+              fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+            ),
+            child: Text(label),
+          ),
+        ),
       ),
     );
   }
@@ -720,7 +977,7 @@ class _LeaderboardList extends StatelessWidget {
   const _LeaderboardList({
     required this.statsList,
     required this.tabIndex,
-    required this.groupId,
+    required this.groupId, required ValueKey<String> key,
   });
 
   @override
@@ -993,4 +1250,348 @@ class _CentreMsg extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QR Invite Sheet — shows a scannable QR code for the group invite code,
+// with options to copy the code or share the QR as an image.
+// ─────────────────────────────────────────────────────────────────────────────
+class _QrInviteSheet extends StatefulWidget {
+  final Group group;
+  const _QrInviteSheet({required this.group});
+
+  @override
+  State<_QrInviteSheet> createState() => _QrInviteSheetState();
+}
+
+class _QrInviteSheetState extends State<_QrInviteSheet> {
+  final _qrKey = GlobalKey();
+  final ValueNotifier<bool> _sharingNotifier = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _sharingNotifier.dispose();
+    super.dispose();
+  }
+
+  Future<void> _shareQr() async {
+    _sharingNotifier.value = true;
+    try {
+      final boundary =
+          _qrKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = Uint8List.view(byteData!.buffer);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(bytes,
+                mimeType: 'image/png',
+                name: 'invite_${widget.group.inviteCode}.png'),
+          ],
+          text:
+              'Join "${widget.group.name}" on Pocket Score!\nUse code: ${widget.group.inviteCode}',
+        ),
+      );
+    } finally {
+      if (mounted) _sharingNotifier.value = false;
+    }
+  }
+
+  void _copyCode() {
+    Clipboard.setData(ClipboardData(text: widget.group.inviteCode));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content:
+            Text('Invite code "${widget.group.inviteCode}" copied!'),
+        backgroundColor: AppColors.success,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Invite via QR',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Scan to get the invite code for ${widget.group.name}',
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+
+          // QR card — wrapped in RepaintBoundary for screenshot capture
+          RepaintBoundary(
+            key: _qrKey,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  QrImageView(
+                    data: widget.group.inviteCode,
+                    version: QrVersions.auto,
+                    size: 200,
+                    backgroundColor: Colors.white,
+                    eyeStyle: const QrEyeStyle(
+                      eyeShape: QrEyeShape.square,
+                      color: Color(0xFF064E3B),
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Color(0xFF064E3B),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.group.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF064E3B),
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      widget.group.inviteCode,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF064E3B),
+                        letterSpacing: 4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Pocket Score',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF6B7280),
+                        fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Action buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _copyCode,
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy Code'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _sharingNotifier,
+                    builder: (context, isSharing, child) {
+                      return ElevatedButton.icon(
+                        onPressed: isSharing ? null : _shareQr,
+                        icon: isSharing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.share_rounded, size: 16),
+                        label: Text(isSharing ? 'Preparing…' : 'Share QR'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Horizontal Pitch Painter — A creative background for the TabBar
+// ─────────────────────────────────────────────────────────────────────────────
+class RealisticPitchPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // 1. Subtle grass surrounding the pitch
+    final grassRect = Rect.fromLTWH(0, 0, w, h);
+    final grassPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          const Color(0xFF235326).withValues(alpha: 0.0), // Fade to header green
+          const Color(0xFF235326).withValues(alpha: 0.6), // Rich grass
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(grassRect);
+    canvas.drawRect(grassRect, grassPaint);
+
+    // 2. The Horizontal Pitch Trapezoid
+    final topY = h * 0.15;
+    final bottomY = h * 0.95;
+    
+    // We want the left bowling crease to be exactly at screen x = ~26.
+    final pitchTopLeft = w * 0.05;
+    final pitchTopRight = w * 0.95;
+    final pitchBottomLeft = -w * 0.05;
+    final pitchBottomRight = w * 1.05;
+
+    final pitchPath = Path()
+      ..moveTo(pitchTopLeft, topY)
+      ..lineTo(pitchTopRight, topY)
+      ..lineTo(pitchBottomRight, bottomY)
+      ..lineTo(pitchBottomLeft, bottomY)
+      ..close();
+
+    // Realistic clay/dirt texture
+    final pitchPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          const Color(0xFFB19B74), // deep dirt
+          const Color(0xFFDCC39A), // standard dry pitch clay
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+    
+    // Add subtle shadow for the pitch edges
+    canvas.drawShadow(pitchPath, Colors.black.withValues(alpha: 0.3), 3.0, false);
+    canvas.drawPath(pitchPath, pitchPaint);
+
+    // 3. Crease Lines with 3D projection
+    final creasePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.9)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.square;
+
+    double getX(double percent, double y) {
+      if (y == topY) {
+        return pitchTopLeft + (pitchTopRight - pitchTopLeft) * percent;
+      } else {
+        return pitchBottomLeft + (pitchBottomRight - pitchBottomLeft) * percent;
+      }
+    }
+
+    // Positions for creases
+    final leftBowlingPct = 0.08;
+    final leftPoppingPct = 0.24;
+    
+    final rightBowlingPct = 0.92;
+    final rightPoppingPct = 0.76;
+
+    // Left Bowling
+    canvas.drawLine(Offset(getX(leftBowlingPct, topY), topY), Offset(getX(leftBowlingPct, bottomY), bottomY), creasePaint);
+    // Left Popping
+    canvas.drawLine(Offset(getX(leftPoppingPct, topY), topY), Offset(getX(leftPoppingPct, bottomY), bottomY), creasePaint);
+
+    // Right Bowling
+    canvas.drawLine(Offset(getX(rightBowlingPct, topY), topY), Offset(getX(rightBowlingPct, bottomY), bottomY), creasePaint);
+    // Right Popping
+    canvas.drawLine(Offset(getX(rightPoppingPct, topY), topY), Offset(getX(rightPoppingPct, bottomY), bottomY), creasePaint);
+    
+    // Return Creases (horizontal lines)
+    canvas.drawLine(Offset(getX(0.0, topY), topY), Offset(getX(leftPoppingPct, topY), topY), creasePaint);
+    canvas.drawLine(Offset(getX(0.0, bottomY), bottomY), Offset(getX(leftPoppingPct, bottomY), bottomY), creasePaint);
+
+    canvas.drawLine(Offset(getX(rightPoppingPct, topY), topY), Offset(getX(1.0, topY), topY), creasePaint);
+    canvas.drawLine(Offset(getX(rightPoppingPct, bottomY), bottomY), Offset(getX(1.0, bottomY), bottomY), creasePaint);
+
+    // Subtle middle pitch line (faded)
+    final midPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.15)
+      ..strokeWidth = 1.0;
+    canvas.drawLine(Offset(getX(0.5, topY), topY), Offset(getX(0.5, bottomY), bottomY), midPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

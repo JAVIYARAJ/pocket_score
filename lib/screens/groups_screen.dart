@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
-import '../bloc/group_cubit.dart';
+import '../bloc/group_cubit.dart'
+    show
+        GroupBloc,
+        GroupState,
+        GroupInitial,
+        GroupLoading,
+        GroupCreated,
+        GroupJoined,
+        GroupError,
+        LoadGroups,
+        CreateGroupEvent,
+        JoinGroupEvent;
 import '../models/group_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import 'group_detail_screen.dart';
+import '../widgets/premium_header.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GroupsScreen — "My Groups" list with create / join actions
@@ -27,14 +39,50 @@ class GroupsScreen extends StatelessWidget {
         body: Column(
           children: [
             // ── Gradient header ──────────────────────────────────
-            _GroupsHeader(
-              onCreate: () => _showCreateSheet(context),
-              onJoin: () => _showJoinSheet(context),
+            PremiumHeader(
+              category: 'CRICKET CIRCLES',
+              title: 'My Groups',
+              showBackButton: false,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TapBounce(
+                    onTap: () => _showJoinSheet(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.group_add_rounded,
+                          color: Colors.white, size: 22),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  TapBounce(
+                    onTap: () => _showCreateSheet(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.4),
+                              blurRadius: 12)
+                        ],
+                      ),
+                      child: const Icon(Icons.add_rounded,
+                          color: Colors.white, size: 22),
+                    ),
+                  ),
+                ],
+              ),
             ),
 
             // ── Groups list ──────────────────────────────────────
             Expanded(
-              child: BlocBuilder<GroupCubit, GroupState>(
+              child: BlocBuilder<GroupBloc, GroupState>(
                 builder: (context, state) {
                   if (state is GroupLoading || state is GroupInitial) {
                     return const Center(
@@ -46,11 +94,10 @@ class GroupsScreen extends StatelessWidget {
                     return _ErrorView(
                       message: state.message,
                       onRetry: () =>
-                          context.read<GroupCubit>().loadMyGroups(),
+                          context.read<GroupBloc>().add(const LoadGroups()),
                     );
                   }
-                  final groups =
-                      state is GroupLoaded ? state.myGroups : <Group>[];
+                  final groups = state.groups;
                   if (groups.isEmpty) {
                     return _EmptyGroups(
                       onCreate: () => _showCreateSheet(context),
@@ -58,8 +105,7 @@ class GroupsScreen extends StatelessWidget {
                     );
                   }
                   return ListView.builder(
-                    padding:
-                        const EdgeInsets.fromLTRB(20, 20, 20, 40),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
                     itemCount: groups.length,
                     itemBuilder: (context, i) => FadeInEntrance(
                       key: ValueKey(groups[i].id),
@@ -69,12 +115,9 @@ class GroupsScreen extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _GroupCard(
                           group: groups[i],
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  GroupDetailScreen(group: groups[i]),
-                            ),
+                          onTap: () => context.push(
+                            '/groups/${groups[i].id}',
+                            extra: groups[i],
                           ),
                         ),
                       ),
@@ -89,122 +132,29 @@ class GroupsScreen extends StatelessWidget {
     );
   }
 
-  void _showCreateSheet(BuildContext context) =>
-      showModalBottomSheet(
+  void _showCreateSheet(BuildContext context) => showModalBottomSheet(
         context: context,
+        useRootNavigator: true,
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
-        builder: (_) => BlocProvider.value(
-          value: context.read<GroupCubit>(),
+        builder: (ctx) => BlocProvider.value(
+          value: context.read<GroupBloc>(),
           child: const _CreateGroupSheet(),
         ),
       );
 
-  void _showJoinSheet(BuildContext context) =>
-      showModalBottomSheet(
+  void _showJoinSheet(BuildContext context) => showModalBottomSheet(
         context: context,
+        useRootNavigator: true,
         backgroundColor: Colors.transparent,
         isScrollControlled: true,
-        builder: (_) => BlocProvider.value(
-          value: context.read<GroupCubit>(),
+        builder: (ctx) => BlocProvider.value(
+          value: context.read<GroupBloc>(),
           child: const _JoinGroupSheet(),
         ),
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Header
-// ─────────────────────────────────────────────────────────────────────────────
-class _GroupsHeader extends StatelessWidget {
-  final VoidCallback onCreate;
-  final VoidCallback onJoin;
-  const _GroupsHeader({required this.onCreate, required this.onJoin});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-          20, MediaQuery.of(context).padding.top + 16, 20, 28),
-      decoration: const BoxDecoration(
-        gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-      ),
-      child: FadeInEntrance(
-        delay: const Duration(milliseconds: 80),
-        offset: const Offset(0, -16),
-        child: Row(
-          children: [
-            TapBounce(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('CRICKET CIRCLES',
-                      style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 2.5,
-                          color: Colors.white60,
-                          fontWeight: FontWeight.w700)),
-                  SizedBox(height: 2),
-                  Text('My Groups',
-                      style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.5)),
-                ],
-              ),
-            ),
-            // Join
-            TapBounce(
-              onTap: onJoin,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.group_add_rounded,
-                    color: Colors.white, size: 22),
-              ),
-            ),
-            const SizedBox(width: 10),
-            // Create
-            TapBounce(
-              onTap: onCreate,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.4),
-                        blurRadius: 12)
-                  ],
-                ),
-                child:
-                    const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group card
@@ -212,6 +162,7 @@ class _GroupsHeader extends StatelessWidget {
 class _GroupCard extends StatelessWidget {
   final Group group;
   final VoidCallback onTap;
+
   const _GroupCard({required this.group, required this.onTap});
 
   @override
@@ -233,9 +184,7 @@ class _GroupCard extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(
-                group.name.isNotEmpty
-                    ? group.name[0].toUpperCase()
-                    : '?',
+                group.name.isNotEmpty ? group.name[0].toUpperCase() : '?',
                 style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -262,7 +211,8 @@ class _GroupCard extends StatelessWidget {
                           size: 13,
                           color: AppColors.textMuted.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
-                      Text('${group.memberCount} member${group.memberCount == 1 ? '' : 's'}',
+                      Text(
+                          '${group.memberCount} member${group.memberCount == 1 ? '' : 's'}',
                           style: const TextStyle(
                               fontSize: 12, color: AppColors.textMuted)),
                       const SizedBox(width: 12),
@@ -300,13 +250,14 @@ class _GroupCard extends StatelessWidget {
 class _EmptyGroups extends StatelessWidget {
   final VoidCallback onCreate;
   final VoidCallback onJoin;
+
   const _EmptyGroups({required this.onCreate, required this.onJoin});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -330,10 +281,9 @@ class _EmptyGroups extends StatelessWidget {
             const Text(
               'Create a group and invite your cricket friends, or join one with an invite code.',
               style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textMuted,
-                  height: 1.5),
+                  fontSize: 13, color: AppColors.textMuted, height: 1.5),
               textAlign: TextAlign.center,
+              maxLines: 3,
             ),
             const SizedBox(height: 32),
             Row(
@@ -364,6 +314,7 @@ class _EmptyBtn extends StatelessWidget {
   final IconData icon;
   final bool primary;
   final VoidCallback onTap;
+
   const _EmptyBtn(
       {required this.label,
       required this.icon,
@@ -375,15 +326,12 @@ class _EmptyBtn extends StatelessWidget {
     return TapBounce(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           gradient: primary ? AppColors.primaryGradient : null,
           color: primary ? null : AppColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: primary
-              ? null
-              : Border.all(color: AppColors.border),
+          border: primary ? null : Border.all(color: AppColors.border),
           boxShadow: primary
               ? [
                   BoxShadow(
@@ -396,7 +344,8 @@ class _EmptyBtn extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: primary ? Colors.white : AppColors.primary),
+            Icon(icon,
+                size: 16, color: primary ? Colors.white : AppColors.primary),
             const SizedBox(width: 8),
             Text(label,
                 style: TextStyle(
@@ -416,6 +365,7 @@ class _EmptyBtn extends StatelessWidget {
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
+
   const _ErrorView({required this.message, required this.onRetry});
 
   @override
@@ -434,8 +384,7 @@ class _ErrorView extends StatelessWidget {
           TapBounce(
             onTap: onRetry,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -464,126 +413,133 @@ class _CreateGroupSheet extends StatefulWidget {
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _loading = false;
+  final _loading = ValueNotifier<bool>(false);
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _loading.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
-    final group =
-        await context.read<GroupCubit>().createGroup(_ctrl.text.trim());
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (group != null) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Group "${group.name}" created!  Code: ${group.inviteCode}'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to create group. Please try again.'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-    }
+    _loading.value = true;
+    context.read<GroupBloc>().add(CreateGroupEvent(_ctrl.text.trim()));
   }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            const Text('Create Group',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 6),
-            const Text('A 6-character invite code is generated automatically.',
-                style:
-                    TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: _ctrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                labelText: 'Group Name',
-                hintText: 'e.g. Friday Cricket Friends',
-                prefixIcon: const Icon(Icons.group_rounded,
-                    color: AppColors.primary),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(
-                      color: AppColors.primary, width: 2),
+    return BlocListener<GroupBloc, GroupState>(
+      listener: (context, state) {
+        if (state is GroupCreated) {
+          final messenger = ScaffoldMessenger.of(context);
+          context.pop();
+          messenger.showSnackBar(SnackBar(
+            content: Text(
+                'Group "${state.created.name}" created!  Code: ${state.created.inviteCode}'),
+            backgroundColor: AppColors.success,
+          ));
+        } else if (state is GroupError) {
+          _loading.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Failed to create group. Please try again.'),
+            backgroundColor: AppColors.danger,
+          ));
+        }
+      },
+      child: Container(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              const Text('Create Group',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 6),
+              const Text(
+                  'A 6-character invite code is generated automatically.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: 'Group Name',
+                  hintText: 'e.g. Friday Cricket Friends',
+                  prefixIcon:
+                      const Icon(Icons.group_rounded, color: AppColors.primary),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: AppColors.primary, width: 2),
+                  ),
                 ),
+                validator: (v) => v == null || v.trim().isEmpty
+                    ? 'Name cannot be empty'
+                    : null,
               ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Name cannot be empty' : null,
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primary, strokeWidth: 2))
-                  : Container(
-                      decoration: BoxDecoration(
-                        gradient: AppColors.primaryGradient,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                              color:
-                                  AppColors.primary.withValues(alpha: 0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text('Create Group',
-                            style: TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              ValueListenableBuilder<bool>(
+                valueListenable: _loading,
+                builder: (context, isLoading, _) {
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: isLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary, strokeWidth: 2))
+                        : Container(
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                    color:
+                                        AppColors.primary.withValues(alpha: 0.35),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4))
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                              ),
+                              child: const Text('Create Group',
+                                  style: TextStyle(
+                                      fontSize: 15, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -603,134 +559,141 @@ class _JoinGroupSheet extends StatefulWidget {
 class _JoinGroupSheetState extends State<_JoinGroupSheet> {
   final _ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _loading = false;
+  final _loading = ValueNotifier<bool>(false);
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _loading.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
-    final group = await context
-        .read<GroupCubit>()
-        .joinGroup(_ctrl.text.trim().toUpperCase());
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (group != null) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Joined "${group.name}"!'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid invite code. Please check and try again.'),
-          backgroundColor: AppColors.danger,
-        ),
-      );
-    }
+    _loading.value = true;
+    context
+        .read<GroupBloc>()
+        .add(JoinGroupEvent(_ctrl.text.trim().toUpperCase()));
   }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            const Text('Join a Group',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 6),
-            const Text('Enter the 6-character code from your group admin.',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: _ctrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 6,
-              style: const TextStyle(
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 18),
-              decoration: InputDecoration(
-                labelText: 'Invite Code',
-                hintText: 'e.g. XK7P2M',
-                prefixIcon: const Icon(Icons.vpn_key_rounded,
-                    color: AppColors.primary),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide:
-                      const BorderSide(color: AppColors.primary, width: 2),
+    return BlocListener<GroupBloc, GroupState>(
+      listener: (context, state) {
+        if (state is GroupJoined) {
+          final messenger = ScaffoldMessenger.of(context);
+          context.pop();
+          messenger.showSnackBar(SnackBar(
+            content: Text('Joined "${state.joined.name}"!'),
+            backgroundColor: AppColors.success,
+          ));
+        } else if (state is GroupError) {
+          _loading.value = false;
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Invalid invite code. Please check and try again.'),
+            backgroundColor: AppColors.danger,
+          ));
+        }
+      },
+      child: Container(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              const Text('Join a Group',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 6),
+              const Text('Enter the 6-character code from your group admin.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 6,
+                style: const TextStyle(
+                    letterSpacing: 4,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18),
+                decoration: InputDecoration(
+                  labelText: 'Invite Code',
+                  hintText: 'e.g. XK7P2M',
+                  prefixIcon: const Icon(Icons.vpn_key_rounded,
+                      color: AppColors.primary),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        const BorderSide(color: AppColors.primary, width: 2),
+                  ),
+                  counterText: '',
                 ),
-                counterText: '',
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty)
+                    return 'Enter the invite code';
+                  if (v.trim().length != 6) return 'Code must be 6 characters';
+                  return null;
+                },
               ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) return 'Enter the invite code';
-                if (v.trim().length != 6) return 'Code must be 6 characters';
-                return null;
-              },
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primary, strokeWidth: 2))
-                  : Container(
-                      decoration: BoxDecoration(
-                        gradient: AppColors.primaryGradient,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                              color:
-                                  AppColors.primary.withValues(alpha: 0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4))
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text('Join Group',
-                            style: TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              ValueListenableBuilder<bool>(
+                valueListenable: _loading,
+                builder: (context, isLoading, _) {
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: isLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary, strokeWidth: 2))
+                        : Container(
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                    color:
+                                        AppColors.primary.withValues(alpha: 0.35),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4))
+                              ],
+                            ),
+                            child: ElevatedButton(
+                              onPressed: _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14)),
+                              ),
+                              child: const Text('Join Group',
+                                  style: TextStyle(
+                                      fontSize: 15, fontWeight: FontWeight.w700)),
+                            ),
+                          ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

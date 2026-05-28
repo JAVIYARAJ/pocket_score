@@ -1,20 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/auth_cubit.dart' show AuthCubit;
+import 'package:go_router/go_router.dart';
+import '../bloc/auth_cubit.dart' show AuthBloc;
 import '../bloc/match_list_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/score_bloc.dart';
+import '../bloc/profile_bloc.dart';
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
-import '../widgets/scorecard_widget.dart';
-import 'player_screen.dart';
-import 'match_setup_screen.dart';
-import 'scoring_screen.dart';
 import '../utils/stats_utils.dart';
-import 'leaderboard_screen.dart';
-import 'profile_screen.dart';
-import 'groups_screen.dart';
 import '../theme/animations.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -23,7 +18,18 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
+    return BlocListener<ProfileBloc, ProfileState>(
+      // Show the player-profile setup sheet the first time a user signs in
+      // and hasn't set their preferences yet.
+      listenWhen: (prev, curr) =>
+          curr is ProfileLoaded && !curr.profile.hasPreferences &&
+          prev is! ProfileLoaded,
+      listener: (context, state) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) _showFirstTimeSetup(context);
+        });
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
@@ -97,11 +103,218 @@ class HomeScreen extends StatelessWidget {
               );
             },
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+          const SliverToBoxAdapter(child: SizedBox(height: 120)),
         ],
       ),
       ), // Scaffold
-    );   // AnnotatedRegion
+      ), // AnnotatedRegion
+    );   // BlocListener
+  }
+
+  void _showFirstTimeSetup(BuildContext context) {
+    showModalBottomSheet(
+      context       : context,
+      isDismissible : false,
+      enableDrag    : false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PlayerSetupSheet(),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// First-time player setup sheet — shown when the user has no preferences yet.
+// Non-dismissible so the user always sets a role before playing.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PlayerSetupSheet extends StatefulWidget {
+  @override
+  State<_PlayerSetupSheet> createState() => _PlayerSetupSheetState();
+}
+
+class _PlayerSetupSheetState extends State<_PlayerSetupSheet> {
+  String _role         = 'All-Rounder';
+  String _battingStyle = 'Right-hand Bat';
+  String _bowlingStyle = 'Right-arm Fast';
+
+  void _save() {
+    context.read<ProfileBloc>().add(UpdatePlayerPreferences(
+      playerRole   : _role,
+      battingStyle : _battingStyle,
+      bowlingStyle : _bowlingStyle,
+    ));
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 24, 24, bottom + 32),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.sports_cricket_rounded,
+                      color: AppColors.primary, size: 22),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Welcome to Pocket Score!',
+                          style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary)),
+                      SizedBox(height: 2),
+                      Text('Set up your cricket profile to get started.',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textMuted)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Role
+            _label('PLAYER ROLE'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: ['Batsman', 'Bowler', 'All-Rounder', 'Wicketkeeper']
+                  .map((r) => _chip(r, _role == r,
+                      () => setState(() => _role = r)))
+                  .toList(),
+            ),
+            const SizedBox(height: 20),
+
+            // Batting style
+            _label('BATTING STYLE'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: ['Right-hand Bat', 'Left-hand Bat']
+                  .map((b) => _chip(b, _battingStyle == b,
+                      () => setState(() => _battingStyle = b)))
+                  .toList(),
+            ),
+            const SizedBox(height: 20),
+
+            // Bowling style
+            _label('BOWLING STYLE'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: [
+                'Right-arm Fast',
+                'Right-arm Spin',
+                'Left-arm Fast',
+                'Left-arm Spin',
+                'None',
+              ].map((w) => _chip(w, _bowlingStyle == w,
+                      () => setState(() => _bowlingStyle = w)))
+                  .toList(),
+            ),
+            const SizedBox(height: 28),
+
+            // Save button
+            SizedBox(
+              width: double.infinity,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Start Playing 🏏',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _label(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: AppColors.textMuted,
+          letterSpacing: 1.2,
+        ),
+      );
+
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 1.5 : 1),
+        ),
+        child: Text(label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: selected ? AppColors.primary : AppColors.textMuted,
+            )),
+      ),
+    );
   }
 }
 
@@ -118,58 +331,38 @@ class _HeroHeader extends StatelessWidget {
         children: [
           // Top bar
           Padding(
-            padding: EdgeInsets.fromLTRB(20, topPadding + 16, 20, 0),
+            padding: EdgeInsets.fromLTRB(20, topPadding + 20, 20, 0),
             child: Row(
               children: [
-                _ProfileAvatarBtn(context: context),
-                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Hello, ${context.read<AuthCubit>().userName?.split(' ').first ?? 'Scorer'}',
+                        'Hi, ${context.read<AuthBloc>().userName?.split(' ').first ?? 'Scorer'} 👋',
                         style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
                           color: Colors.white,
                           letterSpacing: -0.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Ready for the next match?',
+                      const SizedBox(height: 4),
+                      Text(
+                        'What would you like to do today?',
                         style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white70,
+                          fontSize: 14,
+                          color: Colors.white.withValues(alpha: 0.8),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
                 ),
-                _ModernHeaderIconBtn(
-                  icon: Icons.group_rounded,
-                  onTap: () => Navigator.push(context,
-                      MaterialPageRoute(
-                          builder: (_) => const GroupsScreen())),
-                ),
-                const SizedBox(width: 8),
-                _ModernHeaderIconBtn(
-                  icon: Icons.emoji_events_rounded,
-                  onTap: () => Navigator.push(context,
-                      MaterialPageRoute(
-                          builder: (_) => const LeaderboardScreen())),
-                ),
-                const SizedBox(width: 8),
-                _ModernHeaderIconBtn(
-                  icon: Icons.people_rounded,
-                  onTap: () => Navigator.push(context,
-                      MaterialPageRoute(
-                          builder: (_) => const PlayerScreen())),
-                ),
+                const SizedBox(width: 16),
+                _ProfileAvatarBtn(context: context),
               ],
             ),
           ),
@@ -204,64 +397,125 @@ class _HeroHeader extends StatelessWidget {
                 onTap: () {
                   if (last.scoreData != null) {
                     try {
-                      ScorecardView.showAsBottomSheet(
-                          context, ScoreState.fromJson(last.scoreData!));
+                      context.push('/scorecard',
+                          extra: ScoreState.fromJson(last.scoreData!));
                     } catch (_) {}
                   }
                 },
                 child: Container(
                   margin: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(14),
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2)),
+                        color: Colors.white.withValues(alpha: 0.15)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.history_rounded,
-                          size: 14, color: Colors.white60),
-                      const SizedBox(width: 8),
-                      const Text('LAST RESULT',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white60,
-                              letterSpacing: 0.8)),
-                      const SizedBox(width: 12),
-                      Text(last.teamAName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13)),
-                      const SizedBox(width: 6),
-                      Text('${last.teamAScore ?? 0}/${last.teamAWickets ?? 0}',
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13)),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('vs',
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.history_rounded,
+                                    size: 11, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text('LAST RESULT',
+                                    style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                        letterSpacing: 0.8)),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'View Scorecard',
                             style: TextStyle(
-                                color: Colors.white38, fontSize: 11)),
-                      ),
-                      Text(last.teamBName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13)),
-                      const SizedBox(width: 6),
-                      Text('${last.teamBScore ?? 0}/${last.teamBWickets ?? 0}',
-                          style: const TextStyle(
-                              color: Colors.white70,
+                              fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              fontSize: 13)),
-                      const Spacer(),
-                      const Icon(Icons.chevron_right,
-                          size: 16, color: Colors.white38),
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.chevron_right,
+                              size: 14, color: Colors.white.withValues(alpha: 0.7)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    last.teamAName,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${last.teamAScore ?? 0}/${last.teamAWickets ?? 0}',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'vs',
+                              style: TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Expanded(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${last.teamBScore ?? 0}/${last.teamBWickets ?? 0}',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14),
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    last.teamBName,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -279,8 +533,7 @@ class _HeroHeader extends StatelessWidget {
       onTap: () {
         context.read<MatchBloc>().add(ResetMatch());
         context.read<ScoreBloc>().add(ResetScoreboard());
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const MatchSetupScreen()));
+        context.push('/match/setup');
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -348,15 +601,12 @@ class _ProfileAvatarBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext ctx) {
-    final cubit = context.read<AuthCubit>();
+    final cubit = context.read<AuthBloc>();
     final avatarUrl = cubit.avatarUrl;
     final name = cubit.userName ?? '';
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ProfileScreen()),
-      ),
+      onTap: () => context.go('/profile'),
       child: Container(
         width: 46,
         height: 46,
@@ -364,6 +614,13 @@ class _ProfileAvatarBtn extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(
               color: Colors.white.withValues(alpha: 0.3), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: ClipOval(
           child: avatarUrl != null && avatarUrl.isNotEmpty
@@ -401,28 +658,6 @@ class _ProfileAvatarBtn extends StatelessWidget {
   }
 }
 
-class _ModernHeaderIconBtn extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _ModernHeaderIconBtn(
-      {required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
-  }
-}
-
 // ── Live Match Banner ──────────────────────────────────────────
 class _LiveBanner extends StatelessWidget {
   final MatchSummary match;
@@ -431,8 +666,7 @@ class _LiveBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => Navigator.push(context,
-          MaterialPageRoute(builder: (_) => const ScoringScreen())),
+      onTap: () {},
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -645,12 +879,11 @@ class _MatchCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         if (isLive) {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const ScoringScreen()));
+          // ScoringScreen is shown via the shell overlay — no navigation needed
         } else if (isDone && match.scoreData != null) {
           try {
-            ScorecardView.showAsBottomSheet(
-                context, ScoreState.fromJson(match.scoreData!));
+            context.push('/scorecard',
+                extra: ScoreState.fromJson(match.scoreData!));
           } catch (_) {}
         }
       },
@@ -829,6 +1062,7 @@ class _MatchCard extends StatelessWidget {
   void _options(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: EdgeInsets.fromLTRB(
@@ -869,7 +1103,7 @@ class _MatchCard extends StatelessWidget {
       IconData icon, Color c, Function(BuildContext) action) {
     return GestureDetector(
       onTap: () {
-        Navigator.pop(context);
+        context.pop();
         action(context);
       },
       child: Container(
@@ -917,8 +1151,7 @@ class _MatchCard extends StatelessWidget {
     if (match.teamA != null && match.teamB != null) {
       context.read<MatchBloc>().add(SelectTeams(match.teamA!, match.teamB!));
     }
-    Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const MatchSetupScreen()));
+    context.push('/match/setup');
   }
 
   void _delete(BuildContext context) {

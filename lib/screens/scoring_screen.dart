@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../bloc/score_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/match_list_bloc.dart';
@@ -10,9 +11,6 @@ import '../models/player_model.dart';
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/scorecard_widget.dart';
-import 'result_screen.dart';
-import 'opening_selection_screen.dart';
 
 class ScoringScreen extends StatelessWidget {
   const ScoringScreen({super.key});
@@ -42,8 +40,7 @@ class ScoringScreen extends StatelessWidget {
                   _inningsBreak(context, state);
                 }
               } else {
-                Navigator.pushReplacement(context,
-                    MaterialPageRoute(builder: (_) => const ResultScreen()));
+                context.push('/match/result');
               }
             });
           }
@@ -104,7 +101,7 @@ class ScoringScreen extends StatelessWidget {
       teamBScore: bScore, teamBWickets: bWkts, teamBOvers: bOv,
       scoreData: state.toJson(),
       result: done
-          ? (second!.totalRuns > first!.totalRuns
+          ? (second.totalRuns > first!.totalRuns
               ? '${second.battingTeamName} won'
               : first.totalRuns > second.totalRuns
                   ? '${first.battingTeamName} won'
@@ -191,12 +188,12 @@ class ScoringScreen extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => OpeningSelectionScreen(
-                          battingTeamName : aBatted ? teamB.name : teamA.name,
-                          battingPlayers  : aBatted ? teamB.players : teamA.players,
-                          bowlingPlayers  : aBatted ? teamA.players : teamB.players,
-                          target          : target,
-                        )));
+                        context.push('/match/opening', extra: {
+                          'battingTeamName': aBatted ? teamB.name : teamA.name,
+                          'battingPlayers' : aBatted ? teamB.players : teamA.players,
+                          'bowlingPlayers' : aBatted ? teamA.players : teamB.players,
+                          'target'         : target,
+                        });
                       },
                       icon: const Icon(Icons.play_arrow_rounded, size: 20),
                       label: const Text('Start 2nd Innings', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -266,7 +263,7 @@ class ScoringScreen extends StatelessWidget {
                     context.read<MatchBloc>().add(ResetMatch());
                     context.read<ScoreBloc>().add(ResetScoreboard());
                     Navigator.pop(ctx);
-                    Navigator.of(context).popUntil((r) => r.isFirst);
+                    context.go('/home');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.danger,
@@ -287,6 +284,13 @@ class ScoringScreen extends StatelessWidget {
 }
 
 // ── Scoring View ───────────────────────────────────────────────
+class CelebrationData {
+  final String text;
+  final Color color;
+
+  CelebrationData({required this.text, required this.color});
+}
+
 class _ScoringView extends StatefulWidget {
   final ScoreState state;
   const _ScoringView({required this.state});
@@ -295,8 +299,7 @@ class _ScoringView extends StatefulWidget {
 }
 
 class _ScoringViewState extends State<_ScoringView> {
-  String? _celebText;
-  Color? _celebColor;
+  final ValueNotifier<CelebrationData?> _celebration = ValueNotifier<CelebrationData?>(null);
 
   @override
   void initState() {
@@ -304,6 +307,12 @@ class _ScoringViewState extends State<_ScoringView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ScoringScreen._syncMatchList(context, widget.state);
     });
+  }
+
+  @override
+  void dispose() {
+    _celebration.dispose();
+    super.dispose();
   }
 
   @override
@@ -331,7 +340,7 @@ class _ScoringViewState extends State<_ScoringView> {
   }
 
   void _celebrate(String text, Color color) {
-    setState(() { _celebText = text; _celebColor = color; });
+    _celebration.value = CelebrationData(text: text, color: color);
   }
 
   @override
@@ -383,12 +392,17 @@ class _ScoringViewState extends State<_ScoringView> {
               delay: const Duration(milliseconds: 260),
               child: _ActionPanel(state: state)),
         ]),
-        if (_celebText != null)
-          ScoreCelebration(
-            text: _celebText!,
-            color: _celebColor!,
-            onFinish: () => setState(() => _celebText = null),
-          ),
+        ValueListenableBuilder<CelebrationData?>(
+          valueListenable: _celebration,
+          builder: (context, data, _) {
+            if (data == null) return const SizedBox.shrink();
+            return ScoreCelebration(
+              text: data.text,
+              color: data.color,
+              onFinish: () => _celebration.value = null,
+            );
+          },
+        ),
       ]),
       ),  // Scaffold
     );   // AnnotatedRegion
@@ -418,7 +432,7 @@ class _ScoringAppBar extends StatelessWidget {
           bg: AppColors.surfaceLight,
           onTap: () {
             ScoringScreen._syncMatchList(context, state);
-            Navigator.of(context).popUntil((r) => r.isFirst);
+            context.go('/home');
           },
         ),
         // Innings info
@@ -456,7 +470,7 @@ class _ScoringAppBar extends StatelessWidget {
           icon: Icons.bar_chart_rounded,
           color: AppColors.primary,
           bg: AppColors.primary.withValues(alpha: 0.1),
-          onTap: () => ScorecardView.showAsBottomSheet(context, state),
+          onTap: () => context.push('/scorecard', extra: state),
         ),
         const SizedBox(width: 8),
         // Delete
@@ -727,7 +741,8 @@ class _PlayerStatus extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(bowler.name,
+                child: Text(
+                    bowler.isGuest ? '${bowler.name} (Guest)' : bowler.name,
                     style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -780,6 +795,12 @@ class _BatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bloc = context.read<ScoreBloc>();
+    Player? player;
+    try {
+      player = state.battingLineup.firstWhere((p) => p.id == playerId);
+    } catch (_) {}
+    final isGuest = player?.isGuest ?? false;
+
     return GestureDetector(
       onTap: () {
         if (playerId.isEmpty) {
@@ -811,7 +832,7 @@ class _BatTile extends StatelessWidget {
                         color: AppColors.primary, shape: BoxShape.circle),
                   ),
                 Flexible(
-                  child: Text(name,
+                  child: Text(isGuest ? '$name (Guest)' : name,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 13,
@@ -973,9 +994,9 @@ class _BatTile extends StatelessWidget {
                                           fontWeight: FontWeight.w700)),
                                 ),
                                 const SizedBox(height: 6),
-                                Text(p.name,
-                                    style: const TextStyle(fontSize: 10),
-                                    overflow: TextOverflow.ellipsis),
+                                 Text(p.isGuest ? '${p.name} (Guest)' : p.name,
+                                     style: const TextStyle(fontSize: 10),
+                                     overflow: TextOverflow.ellipsis),
                               ]),
                         ),
                       );
@@ -1408,7 +1429,7 @@ class _BowlerPicker extends StatelessWidget {
                               fontWeight: FontWeight.w800)),
                     ),
                     const SizedBox(height: 8),
-                    Text(p.name,
+                    Text(p.isGuest ? '${p.name} (Guest)' : p.name,
                         style: const TextStyle(
                             fontSize: 11, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis),
@@ -1756,7 +1777,7 @@ class _PlayerPickerSheet extends StatelessWidget {
                                     : AppColors.primary)),
                       ),
                       const SizedBox(height: 6),
-                      Text(p.name,
+                      Text(p.isGuest ? '${p.name} (Guest)' : p.name,
                           style: const TextStyle(
                               fontSize: 11, fontWeight: FontWeight.w600),
                           textAlign: TextAlign.center,

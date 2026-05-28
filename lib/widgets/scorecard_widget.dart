@@ -9,26 +9,37 @@ import '../utils/stats_utils.dart';
 class ScorecardView extends StatelessWidget {
   final ScoreState state;
   final ScrollController? scrollController;
+  final bool isFullScreen;
 
-  const ScorecardView({super.key, required this.state, this.scrollController});
+  const ScorecardView({
+    super.key,
+    required this.state,
+    this.scrollController,
+    this.isFullScreen = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       controller: scrollController,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.symmetric(
+        horizontal: isFullScreen ? 16 : 24,
+        vertical: isFullScreen ? 16 : 24,
+      ),
       children: [
-        Center(
-          child: Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(2)),
+        if (!isFullScreen) ...[
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(2)),
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        const Center(
-          child: Text('SCORECARD', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2, color: AppColors.textSecondary)),
-        ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          const Center(
+            child: Text('SCORECARD', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2, color: AppColors.textSecondary)),
+          ),
+          const SizedBox(height: 24),
+        ],
         _buildMoMSection(state),
         if (state.firstInnings != null) _inningsSection(context, state.firstInnings!, isFirst: true),
         if (state.secondInnings != null) ...[
@@ -101,7 +112,7 @@ class ScorecardView extends StatelessWidget {
           decoration: const BoxDecoration(color: AppColors.card),
           child: Column(
             children: [
-              _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'SR']),
+              _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'SR'], flexes: [5, 1, 1, 1, 1, 2]),
               ...bats.entries.map((e) {
                 final name = _findName(inn, e.key);
                 final s = e.value;
@@ -137,11 +148,14 @@ class ScorecardView extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _headerRow(['Bowler', 'O', 'R', 'W', 'Eco', 'Ext']),
+              _headerRow(['Bowler', 'O', 'R', 'W', 'Eco', 'Ext'], flexes: [5, 2, 1, 1, 2, 3]),
               ...bowls.entries.map((e) {
                 final name = _findName(inn, e.key);
                 final s = e.value;
-                return _dataRow([name, s.oversBowled, '${s.runsConceded}', '${s.wickets}', s.economy.toStringAsFixed(1), '${s.wides}wd ${s.noBalls}nb']);
+                return _dataRow(
+                  [name, s.oversBowled, '${s.runsConceded}', '${s.wickets}', s.economy.toStringAsFixed(1), '${s.wides}wd ${s.noBalls}nb'],
+                  flexes: [5, 2, 1, 1, 2, 3],
+                );
               }),
             ],
           ),
@@ -173,7 +187,7 @@ class ScorecardView extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _headerRow(['Over', 'Runs', 'Wkts', 'Total']),
+              _headerRow(['Over', 'Runs', 'Wkts', 'Total'], flexes: [3, 1, 1, 1]),
               ...inn.overSummaries.asMap().entries.map((entry) {
                 final i = entry.key;
                 final ov = entry.value;
@@ -188,7 +202,7 @@ class ScorecardView extends StatelessWidget {
                   '${ov.runs}',
                   '${ov.wickets}',
                   '$cumulativeRuns/$cumulativeWickets',
-                ]);
+                ], flexes: [3, 1, 1, 1]);
               }),
             ],
           ),
@@ -199,6 +213,9 @@ class ScorecardView extends StatelessWidget {
 
   Widget _batRow(Innings inn, String name, BatsmanStats s) {
     bool isNotOut = !s.isOut;
+    final otherVals = ['${s.runs}', '${s.ballsFaced}', '${s.fours}', '${s.sixes}', s.strikeRate.toStringAsFixed(1)];
+    final otherFlexes = [1, 1, 1, 1, 2];
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -208,27 +225,42 @@ class ScorecardView extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            flex: 3,
+            flex: 5,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   '${isNotOut ? "* " : ""}$name',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: isNotOut ? AppColors.accent : AppColors.textPrimary),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isNotOut ? AppColors.accent : AppColors.textPrimary),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _getDismissalInfo(inn, s),
-                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 9.5,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w500),
+                  maxLines: 2,
+                  softWrap: true,
                 ),
               ],
             ),
           ),
-          ...['${s.runs}', '${s.ballsFaced}', '${s.fours}', '${s.sixes}', s.strikeRate.toStringAsFixed(1)].map((val) => Expanded(
-            flex: 1,
-            child: Text(val, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), textAlign: TextAlign.start),
-          )),
+          ...List.generate(otherVals.length, (index) {
+            return Expanded(
+              flex: otherFlexes[index],
+              child: Text(
+                otherVals[index],
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                textAlign: TextAlign.start,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -251,8 +283,16 @@ class ScorecardView extends StatelessWidget {
   }
 
   String _findName(Innings inn, String id) {
-    try { return inn.battingPlayers.firstWhere((p) => p.id == id).name; } catch (_) {}
-    try { return inn.bowlingPlayers.firstWhere((p) => p.id == id).name; } catch (_) { return '—'; }
+    try {
+      final p = inn.battingPlayers.firstWhere((p) => p.id == id);
+      return p.isGuest ? '${p.name} (Guest)' : p.name;
+    } catch (_) {}
+    try {
+      final p = inn.bowlingPlayers.firstWhere((p) => p.id == id);
+      return p.isGuest ? '${p.name} (Guest)' : p.name;
+    } catch (_) {
+      return '—';
+    }
   }
 
   Widget _statBadge(String label, String value, Color color) {
@@ -269,20 +309,24 @@ class ScorecardView extends StatelessWidget {
     );
   }
 
-  Widget _headerRow(List<String> labels) {
+  Widget _headerRow(List<String> labels, {List<int>? flexes}) {
+    final defaultFlex = List.generate(labels.length, (i) => i == 0 ? 3 : 1);
+    final activeFlexes = flexes ?? defaultFlex;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: const BoxDecoration(color: AppColors.surfaceLight),
       child: Row(
         children: labels.asMap().entries.map((e) => Expanded(
-          flex: e.key == 0 ? 3 : 1,
+          flex: activeFlexes[e.key],
           child: Text(e.value, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted, letterSpacing: 0.5)),
         )).toList(),
       ),
     );
   }
 
-  Widget _dataRow(List<String> values, {bool highlight = false}) {
+  Widget _dataRow(List<String> values, {bool highlight = false, List<int>? flexes}) {
+    final defaultFlex = List.generate(values.length, (i) => i == 0 ? 3 : 1);
+    final activeFlexes = flexes ?? defaultFlex;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -291,7 +335,7 @@ class ScorecardView extends StatelessWidget {
       ),
       child: Row(
         children: values.asMap().entries.map((e) => Expanded(
-          flex: e.key == 0 ? 3 : 1,
+          flex: activeFlexes[e.key],
           child: Text(
             e.value,
             style: TextStyle(

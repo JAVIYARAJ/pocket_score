@@ -1,10 +1,10 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../theme/app_theme.dart';
-import '../theme/animations.dart';
-import 'opening_selection_screen.dart';
+import '../widgets/premium_header.dart';
 import 'dart:math';
 
 class TossScreen extends StatefulWidget {
@@ -14,46 +14,71 @@ class TossScreen extends StatefulWidget {
   State<TossScreen> createState() => _TossScreenState();
 }
 
+class _TossStateData {
+  final String? winner;
+  final String? decision;
+  final bool isTossing;
+
+  _TossStateData({
+    this.winner,
+    this.decision,
+    this.isTossing = false,
+  });
+}
+
 class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateMixin {
-  String? _winner;
-  String? _decision;
-  bool _isTossing = false;
+  late final ValueNotifier<_TossStateData> _notifier;
   late AnimationController _animCtrl;
   late Animation<double> _scaleAnim;
 
   @override
   void initState() {
     super.initState();
+    _notifier = ValueNotifier<_TossStateData>(_TossStateData());
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _scaleAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.elasticOut);
   }
 
   @override
-  void dispose() { _animCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _notifier.dispose();
+    _animCtrl.dispose();
+    super.dispose();
+  }
 
   void _flipCoin() async {
-    setState(() => _isTossing = true);
+    _notifier.value = _TossStateData(
+      winner: _notifier.value.winner,
+      decision: _notifier.value.decision,
+      isTossing: true,
+    );
     final ms = context.read<MatchBloc>().state;
     await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
     final winner = Random().nextBool() ? ms.teamA!.name : ms.teamB!.name;
-    setState(() { _winner = winner; _isTossing = false; });
+    _notifier.value = _TossStateData(
+      winner: winner,
+      decision: _notifier.value.decision,
+      isTossing: false,
+    );
     _animCtrl.forward();
   }
 
   void _proceed() {
-    if (_winner == null || _decision == null) return;
-    context.read<MatchBloc>().add(PerformToss(winnerTeamName: _winner!, decision: _decision!));
+    final state = _notifier.value;
+    if (state.winner == null || state.decision == null) return;
+    context.read<MatchBloc>().add(PerformToss(winnerTeamName: state.winner!, decision: state.decision!));
     final ms    = context.read<MatchBloc>().state;
     final teamA = ms.teamA!;
     final teamB = ms.teamB!;
-    final teamABats = (_winner == teamA.name && _decision == 'Bat') ||
-                      (_winner != teamA.name && _decision == 'Bowl');
-    Navigator.push(context, MaterialPageRoute(builder: (_) => OpeningSelectionScreen(
-      battingTeamName  : teamABats ? teamA.name : teamB.name,
-      battingPlayers   : teamABats ? teamA.players : teamB.players,
-      bowlingPlayers   : teamABats ? teamB.players : teamA.players,
-    )));
+    final teamABats = (state.winner == teamA.name && state.decision == 'Bat') ||
+                      (state.winner != teamA.name && state.decision == 'Bowl');
+    context.push('/match/opening', extra: {
+      'battingTeamName': teamABats ? teamA.name : teamB.name,
+      'battingPlayers' : teamABats ? teamA.players : teamB.players,
+      'bowlingPlayers' : teamABats ? teamB.players : teamA.players,
+      'target'         : 0,
+    });
   }
 
   @override
@@ -65,73 +90,48 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
         statusBarBrightness: Brightness.dark,
       ),
       child: Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Column(
-        children: [
-          // ── Gradient header ──────────────────────────────────────
-          _buildHeader(context),
+        backgroundColor: AppColors.bg,
+        body: ValueListenableBuilder<_TossStateData>(
+          valueListenable: _notifier,
+          builder: (context, selection, _) {
+            return Column(
+              children: [
+                // ── Gradient header ──────────────────────────────────────
+                _buildHeader(context),
 
-          // ── Toss body ────────────────────────────────────────────
-          Expanded(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                child: _winner == null ? _buildCoinSection() : _buildResultSection(),
-              ),
-            ),
-          ),
-        ],
-      ),
+                // ── Toss body ────────────────────────────────────────────
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                      child: selection.winner == null ? _buildCoinSection(selection) : _buildResultSection(selection),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ), // Scaffold
     );   // AnnotatedRegion
   }
 
   Widget _buildHeader(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 24),
-      decoration: const BoxDecoration(
-        gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-      ),
-      child: Row(
-        children: [
-          TapBounce(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-            ),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('STEP 3', style: TextStyle(fontSize: 11, letterSpacing: 3, color: Colors.white60, fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text('Coin Toss', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.monetization_on_rounded, color: Colors.white, size: 24),
-          ),
-        ],
+    return PremiumHeader(
+      category: 'STEP 3',
+      title: 'Coin Toss',
+      trailing: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.monetization_on_rounded, color: Colors.white, size: 24),
       ),
     );
   }
 
-  Widget _buildCoinSection() {
+  Widget _buildCoinSection(_TossStateData selection) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -139,36 +139,36 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
         // Animated coin
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
-          width: _isTossing ? 130 : 150,
-          height: _isTossing ? 130 : 150,
+          width: selection.isTossing ? 130 : 150,
+          height: selection.isTossing ? 130 : 150,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: AppColors.primaryGradient,
             boxShadow: [BoxShadow(
-              color: AppColors.primary.withValues(alpha: _isTossing ? 0.55 : 0.3),
-              blurRadius: _isTossing ? 40 : 20,
-              spreadRadius: _isTossing ? 4 : 0,
+              color: AppColors.primary.withValues(alpha: selection.isTossing ? 0.55 : 0.3),
+              blurRadius: selection.isTossing ? 40 : 20,
+              spreadRadius: selection.isTossing ? 4 : 0,
             )],
           ),
           child: Center(
-            child: _isTossing
+            child: selection.isTossing
                 ? const SizedBox(width: 40, height: 40, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
                 : const Icon(Icons.monetization_on_rounded, size: 64, color: Colors.white),
           ),
         ),
         const SizedBox(height: 32),
         Text(
-          _isTossing ? 'Flipping...' : 'Ready to flip!',
+          selection.isTossing ? 'Flipping...' : 'Ready to flip!',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: _isTossing ? AppColors.primary : AppColors.textSecondary,
+            color: selection.isTossing ? AppColors.primary : AppColors.textSecondary,
           ),
         ),
         const SizedBox(height: 6),
         const Text('May the best team win 🏏', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
         const SizedBox(height: 32),
-        if (!_isTossing)
+        if (!selection.isTossing)
           Container(
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
@@ -192,7 +192,7 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildResultSection() {
+  Widget _buildResultSection(_TossStateData selection) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -217,7 +217,7 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 14),
                 const Text('TOSS WON BY', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 2, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
-                Text(_winner!, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white)),
+                Text(selection.winner!, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white)),
               ],
             ),
           ),
@@ -238,9 +238,9 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Expanded(child: _decisionBtn('Bat', Icons.sports_cricket_rounded, _decision == 'Bat')),
+                  Expanded(child: _decisionBtn('Bat', Icons.sports_cricket_rounded, selection.decision == 'Bat', selection)),
                   const SizedBox(width: 16),
-                  Expanded(child: _decisionBtn('Bowl', Icons.sports_baseball_rounded, _decision == 'Bowl')),
+                  Expanded(child: _decisionBtn('Bowl', Icons.sports_baseball_rounded, selection.decision == 'Bowl', selection)),
                 ],
               ),
             ],
@@ -250,17 +250,17 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
 
         // Proceed button
         AnimatedOpacity(
-          opacity: _decision != null ? 1.0 : 0.4,
+          opacity: selection.decision != null ? 1.0 : 0.4,
           duration: const Duration(milliseconds: 300),
           child: Container(
             decoration: BoxDecoration(
-              gradient: _decision != null ? AppColors.primaryGradient : null,
-              color: _decision != null ? null : AppColors.surfaceLight,
+              gradient: selection.decision != null ? AppColors.primaryGradient : null,
+              color: selection.decision != null ? null : AppColors.surfaceLight,
               borderRadius: BorderRadius.circular(14),
-              boxShadow: _decision != null ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))] : null,
+              boxShadow: selection.decision != null ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))] : null,
             ),
             child: ElevatedButton.icon(
-              onPressed: _decision != null ? _proceed : null,
+              onPressed: selection.decision != null ? _proceed : null,
               icon: const Icon(Icons.people_alt_rounded, size: 18),
               label: const Text('Select Openers', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               style: ElevatedButton.styleFrom(
@@ -276,9 +276,13 @@ class _TossScreenState extends State<TossScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _decisionBtn(String label, IconData icon, bool selected) {
+  Widget _decisionBtn(String label, IconData icon, bool selected, _TossStateData selection) {
     return GestureDetector(
-      onTap: () => setState(() => _decision = label),
+      onTap: () => _notifier.value = _TossStateData(
+        winner: selection.winner,
+        decision: label,
+        isTossing: selection.isTossing,
+      ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: 110,

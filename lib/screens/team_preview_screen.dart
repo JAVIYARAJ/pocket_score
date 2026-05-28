@@ -1,10 +1,11 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import 'toss_screen.dart';
+import '../widgets/premium_header.dart';
 
 class TeamPreviewScreen extends StatelessWidget {
   final Team teamA;
@@ -74,9 +75,7 @@ class TeamPreviewScreen extends StatelessWidget {
                     boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
                   ),
                   child: ElevatedButton.icon(
-                    onPressed: () => Navigator.push(
-                      context, MaterialPageRoute(builder: (_) => const TossScreen()),
-                    ),
+                    onPressed: () => context.push('/match/toss'),
                     icon: const Icon(Icons.sports_cricket_rounded, size: 20),
                     label: const Text('Looks Good — Start Match!', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
@@ -96,52 +95,19 @@ class TeamPreviewScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top;
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, topPad + 16, 20, 24),
-      decoration: const BoxDecoration(
-        gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-      ),
-      child: FadeInEntrance(
-        offset: const Offset(0, -20),
-        child: Row(
-          children: [
-            TapBounce(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('STEP 2 OF 4', style: TextStyle(fontSize: 11, letterSpacing: 3, color: Colors.white60, fontWeight: FontWeight.w700)),
-                  SizedBox(height: 2),
-                  Text('Lineup Preview', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
-                ],
-              ),
-            ),
-            // Team count badges
-            Row(
-              children: [
-                _countBadge(teamA.players.length, AppColors.info),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6),
-                  child: Text('vs', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w600)),
-                ),
-                _countBadge(teamB.players.length, AppColors.accentLight),
-              ],
-            ),
-          ],
-        ),
+    return PremiumHeader(
+      category: 'STEP 2 OF 4',
+      title: 'Lineup Preview',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _countBadge(teamA.players.length, AppColors.info),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6),
+            child: Text('vs', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w600)),
+          ),
+          _countBadge(teamB.players.length, AppColors.accentLight),
+        ],
       ),
     );
   }
@@ -311,13 +277,37 @@ class TeamPreviewScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  p.name,
-                  style: TextStyle(
-                    fontWeight: isCaptain ? FontWeight.w700 : FontWeight.w600,
-                    fontSize: 14,
-                    color: AppColors.textPrimary,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        p.name,
+                        style: TextStyle(
+                          fontWeight: isCaptain ? FontWeight.w700 : FontWeight.w600,
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (p.isGuest) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: AppColors.textMuted.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('GUEST',
+                            style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textMuted,
+                                letterSpacing: 0.3)),
+                      ),
+                    ],
+                  ],
                 ),
                 if (isCaptain)
                   Text('Captain', style: TextStyle(color: teamColor, fontSize: 10, fontWeight: FontWeight.w600)),

@@ -6,7 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lottie/lottie.dart';
 
 import '../bloc/auth_cubit.dart'
-    show AuthCubit, PocketAuthState, AuthInitial, AuthLoading;
+    show AuthBloc, PocketAuthState, AuthInitial, AuthLoading;
 import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
     // synchronously in its constructor before the listener attaches).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _checkAuthState(context.read<AuthCubit>().state);
+      _checkAuthState(context.read<AuthBloc>().state);
     });
   }
 
@@ -107,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     // BlocListener catches any state change AFTER mount (e.g. delayed auth).
-    return BlocListener<AuthCubit, PocketAuthState>(
+    return BlocListener<AuthBloc, PocketAuthState>(
       listener: (_, state) => _checkAuthState(state),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: const SystemUiOverlayStyle(

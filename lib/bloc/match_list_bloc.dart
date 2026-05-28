@@ -1,4 +1,4 @@
-import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/match_models.dart';
 import '../services/match_repository.dart';
@@ -54,7 +54,7 @@ class MatchListState extends Equatable {
 }
 
 // ── Bloc ────────────────────────────────────────────────────────
-class MatchListBloc extends HydratedBloc<MatchListEvent, MatchListState> {
+class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
   final MatchRepository _repo;
 
   MatchListBloc(this._repo) : super(const MatchListState()) {
@@ -62,10 +62,8 @@ class MatchListBloc extends HydratedBloc<MatchListEvent, MatchListState> {
     on<SyncMatchesFromSupabase>((event, emit) async {
       try {
         final matches = await _repo.getAll();
-        if (matches.isNotEmpty) emit(MatchListState(matches: matches));
-      } catch (_) {
-        // Silently fail — local HydratedBloc cache is still valid
-      }
+        emit(MatchListState(matches: matches));
+      } catch (_) {}
     });
 
     // ── Add ────────────────────────────────────────────────
@@ -98,11 +96,4 @@ class MatchListBloc extends HydratedBloc<MatchListEvent, MatchListState> {
     });
   }
 
-  @override
-  MatchListState? fromJson(Map<String, dynamic> json) {
-    try { return MatchListState.fromJson(json); } catch (_) { return null; }
-  }
-
-  @override
-  Map<String, dynamic>? toJson(MatchListState state) => state.toJson();
 }

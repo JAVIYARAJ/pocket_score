@@ -175,8 +175,8 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
       final Set<String> playersInMatch = {};
       void markPlayers(Innings? inn) {
         if (inn == null) return;
-        playersInMatch.addAll(inn.battingPlayers.map((p) => p.id));
-        playersInMatch.addAll(inn.bowlingPlayers.map((p) => p.id));
+        playersInMatch.addAll(inn.battingPlayers.where((p) => !p.isGuest).map((p) => p.id));
+        playersInMatch.addAll(inn.bowlingPlayers.where((p) => !p.isGuest).map((p) => p.id));
       }
       markPlayers(score.firstInnings);
       markPlayers(score.secondInnings);
@@ -191,12 +191,14 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
 
       void processInningsData(Innings? inn) {
         if (inn == null) return;
-        
-        // Ensure all players are tracked
+
+        // Only track registered (non-guest) players in the leaderboard.
         for (var p in inn.battingPlayers) {
+          if (p.isGuest) continue;
           if (!stats.containsKey(p.id)) stats[p.id] = PlayerStats(id: p.id, name: p.name, role: p.role);
         }
         for (var p in inn.bowlingPlayers) {
+          if (p.isGuest) continue;
           if (!stats.containsKey(p.id)) stats[p.id] = PlayerStats(id: p.id, name: p.name, role: p.role);
         }
 

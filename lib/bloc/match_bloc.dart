@@ -1,4 +1,4 @@
-import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/match_models.dart';
 
@@ -101,7 +101,7 @@ class MatchState extends Equatable {
 }
 
 // Bloc
-class MatchBloc extends HydratedBloc<MatchEvent, MatchState> {
+class MatchBloc extends Bloc<MatchEvent, MatchState> {
   MatchBloc() : super(const MatchState()) {
     on<CreateMatch>((event, emit) {
       emit(state.copyWith(
@@ -132,11 +132,4 @@ class MatchBloc extends HydratedBloc<MatchEvent, MatchState> {
     });
   }
 
-  @override
-  MatchState? fromJson(Map<String, dynamic> json) {
-    try { return MatchState.fromJson(json); } catch (_) { return null; }
-  }
-
-  @override
-  Map<String, dynamic>? toJson(MatchState state) => state.toJson();
 }

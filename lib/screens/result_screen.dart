@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,8 +8,6 @@ import '../bloc/match_list_bloc.dart';
 import '../models/innings_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/scorecard_widget.dart';
-import 'home_screen.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -86,11 +85,11 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   void _goHome() {
     context.read<MatchBloc>().add(ResetMatch());
     context.read<ScoreBloc>().add(ResetScoreboard());
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (r) => false);
+    context.go('/home');
   }
 
   void _viewScorecard() {
-    ScorecardView.showAsBottomSheet(context, _savedState);
+    context.push('/scorecard', extra: _savedState);
   }
 
   @override
@@ -229,10 +228,10 @@ class _ResultHeader extends StatelessWidget {
     final topPad = MediaQuery.of(context).padding.top;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(24, topPad + 24, 24, 40),
+      padding: EdgeInsets.fromLTRB(20, topPad + 20, 20, 40),
       decoration: const BoxDecoration(
         gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
       ),
       child: Column(
         children: [

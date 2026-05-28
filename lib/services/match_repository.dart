@@ -2,72 +2,77 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/match_models.dart';
 import '../models/innings_model.dart';
 
-/// Handles all Supabase operations for the `matches` and `live_scores` tables.
+/// All match operations go through server-side RPC functions.
+/// The only exception is watchLiveScore / watchGroupMatches which use
+/// Supabase Realtime (WebSocket subscriptions) — there is no RPC equivalent
+/// for streaming push events.
 class MatchRepository {
   final SupabaseClient _client;
   MatchRepository(this._client);
 
   String? get _uid => _client.auth.currentUser?.id;
 
-  // ── Fetch all matches for the signed-in user ─────────────
+  // ── Fetch all matches for the signed-in user ──────────────────────────────
   Future<List<MatchSummary>> getAll() async {
-    if (_uid == null) return const [];
-    final rows = await _client
-        .from('matches')
-        .select()
-        .eq('user_id', _uid!)
-        .order('created_at', ascending: false);
-    return rows.map<MatchSummary>((r) => _fromRow(r)).toList();
+    final rows = await _client.rpc('get_my_matches') as List;
+    return rows.map<MatchSummary>((r) => _fromRow(Map<String, dynamic>.from(r as Map))).toList();
   }
 
-  // ── Fetch a single public match (for live watching) ───────
+  // ── Fetch a single match by ID (public — for spectators) ──────────────────
   Future<MatchSummary?> getById(String matchId) async {
-    final rows = await _client
-        .from('matches')
-        .select()
-        .eq('id', matchId)
-        .limit(1);
+    final rows = await _client.rpc('get_match_by_id', params: {'p_match_id': matchId}) as List;
     if (rows.isEmpty) return null;
-    return _fromRow(rows.first);
+    return _fromRow(Map<String, dynamic>.from(rows.first as Map));
   }
 
-  // ── Upsert (create or update) a match ────────────────────
+  // ── Upsert (create or update) a match ────────────────────────────────────
   Future<void> upsert(MatchSummary match) async {
-    if (_uid == null) return;
-    await _client.from('matches').upsert(_toRow(match));
+    await _client.rpc('upsert_match', params: {'p_match': _toJson(match)});
   }
 
-  // ── Delete a match ────────────────────────────────────────
+  // ── Delete a match (also removes its live_score row atomically) ───────────
   Future<void> delete(String matchId) async {
-    await _client.from('matches').delete().eq('id', matchId);
+    await _client.rpc('delete_match', params: {'p_match_id': matchId});
   }
 
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   //  Real-time Live Score
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Publish the current ScoreState JSON to Supabase (called every ball).
-  Future<void> upsertLiveScore(
-    String matchId,
-    Map<String, dynamic> scoreStateJson,
-  ) async {
-    if (_uid == null) return;
-    await _client.from('live_scores').upsert({
-      'match_id'    : matchId,
-      'user_id'     : _uid!,
-      'score_state' : scoreStateJson,
-      'updated_at'  : DateTime.now().toIso8601String(),
+  Future<void> upsertLiveScore(String matchId, Map<String, dynamic> scoreStateJson) async {
+    await _client.rpc('upsert_live_score', params: {
+      'p_match_id'   : matchId,
+      'p_score_state': scoreStateJson,
     });
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  Player Match Stats (relational per-player-per-innings)
-  // ══════════════════════════════════════════════════════════
+  /// Delete the live-score row when a match finishes.
+  Future<void> deleteLiveScore(String matchId) async {
+    await _client.rpc('delete_live_score', params: {'p_match_id': matchId});
+  }
+
+  /// Realtime stream of score-state JSON for a given match.
+  /// Uses Supabase Realtime (WebSocket) — not a PostgREST query.
+  Stream<Map<String, dynamic>?> watchLiveScore(String matchId) {
+    return _client
+        .from('live_scores')
+        .stream(primaryKey: ['match_id'])
+        .eq('match_id', matchId)
+        .map((rows) {
+          if (rows.isEmpty) return null;
+          final raw = rows.first['score_state'];
+          if (raw == null) return null;
+          return Map<String, dynamic>.from(raw as Map);
+        });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  Player Match Stats
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Parses [match.scoreData] and writes one row per player per innings
-  /// into the `player_match_stats` table (upsert on match/player/innings).
-  ///
-  /// Call this once when a match is finalised (status → 'completed').
+  /// via the upsert_player_match_stats RPC.
   Future<void> upsertPlayerMatchStats(MatchSummary match) async {
     if (_uid == null || match.scoreData == null) return;
     try {
@@ -80,30 +85,29 @@ class MatchRepository {
 
       final firstInnings  = parseInnings(scoreJson['firstInnings']);
       final secondInnings = parseInnings(scoreJson['secondInnings']);
-
       final rows = <Map<String, dynamic>>[];
 
       void processInnings(Innings? inn, int inningsNum) {
         if (inn == null) return;
-
-        // Build a name lookup from both lineups
-        final nameMap = <String, String>{
+        final nameMap   = <String, String>{
           for (final p in inn.battingPlayers) p.id: p.name,
           for (final p in inn.bowlingPlayers) p.id: p.name,
         };
-
+        // Track guest status so it can be stored and filtered from leaderboard.
+        final guestMap  = <String, bool>{
+          for (final p in inn.battingPlayers) p.id: p.isGuest,
+          for (final p in inn.bowlingPlayers) p.id: p.isGuest,
+        };
         final batStats  = inn.batsmanStats;
         final bowlStats = inn.bowlerStatsMap;
         final seen      = <String>{};
 
-        // ── Batting rows ─────────────────────────────────
         batStats.forEach((pid, s) {
           seen.add(pid);
           rows.add({
             'match_id'     : match.id,
             'player_id'    : pid,
             'player_name'  : nameMap[pid],
-            'user_id'      : _uid!,
             'innings_num'  : inningsNum,
             'runs'         : s.runs,
             'balls_faced'  : s.ballsFaced,
@@ -119,13 +123,12 @@ class MatchRepository {
             'dot_balls'    : 0,
             'catches'      : 0,
             'run_outs'     : 0,
+            'is_guest'     : guestMap[pid] ?? true,
           });
         });
 
-        // ── Bowling rows (merge if batsman row already exists) ─
         bowlStats.forEach((pid, s) {
           if (seen.contains(pid)) {
-            // Player both batted and bowled in same innings (rare); merge.
             final row = rows.lastWhere(
               (r) => r['player_id'] == pid && r['innings_num'] == inningsNum,
               orElse: () => <String, dynamic>{},
@@ -144,7 +147,6 @@ class MatchRepository {
               'match_id'     : match.id,
               'player_id'    : pid,
               'player_name'  : nameMap[pid],
-              'user_id'      : _uid!,
               'innings_num'  : inningsNum,
               'runs'         : 0,
               'balls_faced'  : 0,
@@ -160,11 +162,11 @@ class MatchRepository {
               'dot_balls'    : s.dotBalls,
               'catches'      : 0,
               'run_outs'     : 0,
+              'is_guest'     : guestMap[pid] ?? true,
             });
           }
         });
 
-        // ── Fielding: patch catches / run-outs ──────────
         batStats.forEach((_, s) {
           final fid = s.outFielderId;
           if (!s.isOut || fid == null) return;
@@ -186,63 +188,39 @@ class MatchRepository {
       processInnings(secondInnings, 2);
 
       if (rows.isNotEmpty) {
-        await _client.from('player_match_stats').upsert(
-          rows,
-          onConflict: 'match_id,player_id,innings_num',
-        );
+        await _client.rpc('upsert_player_match_stats', params: {'p_stats': rows});
       }
     } catch (_) {
-      // Silently fail — stats are supplementary; match is already saved.
+      // Stats are supplementary — silently ignore failures.
     }
   }
 
-  /// Delete the live-score row when a match finishes.
-  Future<void> deleteLiveScore(String matchId) async {
-    await _client.from('live_scores').delete().eq('match_id', matchId);
-  }
-
-  /// Stream of score-state JSON maps for a given match (null if match ended).
-  /// Spectators subscribe to this stream to watch in real-time.
-  Stream<Map<String, dynamic>?> watchLiveScore(String matchId) {
-    return _client
-        .from('live_scores')
-        .stream(primaryKey: ['match_id'])
-        .eq('match_id', matchId)
-        .map((rows) {
-          if (rows.isEmpty) return null;
-          final raw = rows.first['score_state'];
-          if (raw == null) return null;
-          return Map<String, dynamic>.from(raw as Map);
-        });
-  }
-
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   //  Row ↔ Model mapping
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
 
   MatchSummary _fromRow(Map<String, dynamic> r) => MatchSummary(
-    id             : r['id'] as String,
-    teamAName      : r['team_a_name'] as String,
-    teamBName      : r['team_b_name'] as String,
-    teamA          : r['team_a'] != null ? Team.fromJson(Map<String, dynamic>.from(r['team_a'] as Map)) : null,
-    teamB          : r['team_b'] != null ? Team.fromJson(Map<String, dynamic>.from(r['team_b'] as Map)) : null,
-    totalOvers     : (r['total_overs'] as num).toInt(),
-    status         : r['status'] as String? ?? 'setup',
-    result         : r['result'] as String?,
-    teamAScore     : r['team_a_score'] as int?,
-    teamAWickets   : r['team_a_wickets'] as int?,
-    teamAOvers     : r['team_a_overs'] as String?,
-    teamBScore     : r['team_b_score'] as int?,
-    teamBWickets   : r['team_b_wickets'] as int?,
-    teamBOvers     : r['team_b_overs'] as String?,
-    createdAt      : DateTime.parse(r['created_at'] as String),
-    scoreData      : r['score_data'] != null ? Map<String, dynamic>.from(r['score_data'] as Map) : null,
-    groupId        : r['group_id'] as String?,
+    id           : r['id'] as String,
+    teamAName    : r['team_a_name'] as String,
+    teamBName    : r['team_b_name'] as String,
+    teamA        : r['team_a'] != null ? Team.fromJson(Map<String, dynamic>.from(r['team_a'] as Map)) : null,
+    teamB        : r['team_b'] != null ? Team.fromJson(Map<String, dynamic>.from(r['team_b'] as Map)) : null,
+    totalOvers   : (r['total_overs'] as num).toInt(),
+    status       : r['status'] as String? ?? 'setup',
+    result       : r['result'] as String?,
+    teamAScore   : r['team_a_score'] as int?,
+    teamAWickets : r['team_a_wickets'] as int?,
+    teamAOvers   : r['team_a_overs'] as String?,
+    teamBScore   : r['team_b_score'] as int?,
+    teamBWickets : r['team_b_wickets'] as int?,
+    teamBOvers   : r['team_b_overs'] as String?,
+    createdAt    : DateTime.parse(r['created_at'] as String),
+    scoreData    : r['score_data'] != null ? Map<String, dynamic>.from(r['score_data'] as Map) : null,
+    groupId      : r['group_id'] as String?,
   );
 
-  Map<String, dynamic> _toRow(MatchSummary m) => {
+  Map<String, dynamic> _toJson(MatchSummary m) => {
     'id'             : m.id,
-    'user_id'        : _uid!,
     'team_a_name'    : m.teamAName,
     'team_b_name'    : m.teamBName,
     'team_a'         : m.teamA?.toJson(),
@@ -258,6 +236,5 @@ class MatchRepository {
     'team_b_overs'   : m.teamBOvers,
     'score_data'     : m.scoreData,
     'group_id'       : m.groupId,
-    'updated_at'     : DateTime.now().toIso8601String(),
   };
 }

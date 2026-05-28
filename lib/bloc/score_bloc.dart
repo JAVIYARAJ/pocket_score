@@ -1,4 +1,4 @@
-import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/ball_model.dart';
 import '../models/innings_model.dart';
@@ -219,7 +219,7 @@ class ScoreState extends Equatable {
 }
 
 // Bloc
-class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
+class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
   final MatchRepository _repo;
 
   /// The current match ID is provided externally so the BLoC can
@@ -471,11 +471,4 @@ class ScoreBloc extends HydratedBloc<ScoreEvent, ScoreState> {
     });
   }
 
-  @override
-  ScoreState? fromJson(Map<String, dynamic> json) {
-    try { return ScoreState.fromJson(json); } catch (_) { return null; }
-  }
-
-  @override
-  Map<String, dynamic>? toJson(ScoreState state) => state.toJson();
 }

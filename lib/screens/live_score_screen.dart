@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -5,6 +6,7 @@ import '../bloc/score_bloc.dart';
 import '../services/match_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
+import '../widgets/premium_header.dart';
 
 /// Spectator screen — subscribes to a live match via Supabase Realtime.
 /// Anyone who has the match ID can open this screen to watch the score update
@@ -76,73 +78,44 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final top = MediaQuery.of(context).padding.top;
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, top + 16, 20, 24),
-      decoration: const BoxDecoration(
-        gradient: AppColors.headerGradient,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+    return PremiumHeader(
+      title: '${widget.teamAName}  vs  ${widget.teamBName}',
+      titleWidget: Text(
+        '${widget.teamAName}  vs  ${widget.teamBName}',
+        style: const TextStyle(
+          fontSize: 20, fontWeight: FontWeight.w800,
+          color: Colors.white, letterSpacing: -0.3,
+        ),
+        overflow: TextOverflow.ellipsis,
       ),
-      child: Row(
+      subtitleWidget: Row(
         children: [
-          TapBounce(
-            onTap: () => Navigator.pop(context),
+          PulseAnimation(
             child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
+              width: 7, height: 7,
+              decoration: const BoxDecoration(
+                color: Color(0xFF4ADE80),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    PulseAnimation(
-                      child: Container(
-                        width: 7, height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF4ADE80),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'LIVE',
-                      style: TextStyle(
-                        fontSize: 10, fontWeight: FontWeight.w800,
-                        color: Color(0xFF4ADE80), letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${widget.teamAName}  vs  ${widget.teamBName}',
-                  style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w800,
-                    color: Colors.white, letterSpacing: -0.3,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+          const SizedBox(width: 6),
+          const Text(
+            'LIVE SPECTATOR',
+            style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w800,
+              color: Color(0xFF4ADE80), letterSpacing: 1.5,
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.wifi_rounded, color: Colors.white, size: 20),
           ),
         ],
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.wifi_rounded, color: Colors.white, size: 20),
       ),
     );
   }
@@ -430,7 +403,7 @@ class _EndedView extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.pop(),
           child: const Text('Go Back'),
         ),
       ],
@@ -462,7 +435,7 @@ class _ErrorView extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => context.pop(),
             child: const Text('Go Back'),
           ),
         ],

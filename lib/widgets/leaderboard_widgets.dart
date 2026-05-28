@@ -248,7 +248,13 @@ class LeaderboardRankCard extends StatefulWidget {
 }
 
 class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
-  bool _expanded = false;
+  final _expanded = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _expanded.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -279,34 +285,37 @@ class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
       trendColor = AppColors.success;
     }
 
-    return TapBounce(
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: noData ? AppColors.bg : AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isTop3
-                  ? rankColor.withValues(alpha: 0.3)
-                  : AppColors.border.withValues(alpha: 0.5),
-              width: isTop3 ? 1.5 : 1,
-            ),
-            boxShadow: noData
-                ? null
-                : [
-                    BoxShadow(
-                        color: isTop3
-                            ? rankColor.withValues(alpha: 0.1)
-                            : Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4))
-                  ],
-          ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: _expanded,
+      builder: (context, isExpanded, _) {
+        return TapBounce(
+          onTap: () => _expanded.value = !isExpanded,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: noData ? AppColors.bg : AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isTop3
+                      ? rankColor.withValues(alpha: 0.3)
+                      : AppColors.border.withValues(alpha: 0.5),
+                  width: isTop3 ? 1.5 : 1,
+                ),
+                boxShadow: noData
+                    ? null
+                    : [
+                        BoxShadow(
+                            color: isTop3
+                                ? rankColor.withValues(alpha: 0.1)
+                                : Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4))
+                      ],
+              ),
           child: Column(
             children: [
               Row(
@@ -393,7 +402,7 @@ class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
                   ],
                 ],
               ),
-              if (_expanded) ...[
+              if (isExpanded) ...[
                 const SizedBox(height: 16),
                 Container(height: 1, color: AppColors.border),
                 const SizedBox(height: 12),
@@ -426,6 +435,8 @@ class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
           ),
         ),
       ),
+    );
+      },
     );
   }
 
