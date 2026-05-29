@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
@@ -119,7 +120,10 @@ class _LeaderboardTopThreePodiumState extends State<LeaderboardTopThreePodium>
             : p.impactRankScore;
     final isFirst = rank == 1;
 
-    return Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+    return GestureDetector(
+      onTap: () => context.push('/player/${p.id}',
+          extra: {'displayName': p.name}),
+      child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
       Stack(
         alignment: Alignment.topCenter,
         clipBehavior: Clip.none,
@@ -220,7 +224,8 @@ class _LeaderboardTopThreePodiumState extends State<LeaderboardTopThreePodium>
           ),
         ]),
       ),
-    ]);
+    ]),    // Column
+    );     // GestureDetector
   }
 }
 
@@ -334,25 +339,29 @@ class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(s.name,
-                            style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
-                                color: noData
-                                    ? AppColors.textMuted
-                                    : AppColors.textPrimary)),
-                        const SizedBox(height: 2),
-                        Text(s.role.name.toUpperCase(),
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textMuted
-                                    .withValues(alpha: 0.6),
-                                letterSpacing: 0.8)),
-                      ],
+                    child: GestureDetector(
+                      onTap: () => context.push('/player/${s.id}',
+                          extra: {'displayName': s.name}),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.name,
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: noData
+                                      ? AppColors.textMuted
+                                      : AppColors.textPrimary)),
+                          const SizedBox(height: 2),
+                          Text(s.role.name.toUpperCase(),
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textMuted
+                                      .withValues(alpha: 0.6),
+                                  letterSpacing: 0.8)),
+                        ],
+                      ),
                     ),
                   ),
                   if (noData)

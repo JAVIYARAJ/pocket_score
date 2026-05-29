@@ -52,19 +52,13 @@ class MatchRepository {
     await _client.rpc('delete_live_score', params: {'p_match_id': matchId});
   }
 
-  /// Realtime stream of score-state JSON for a given match.
-  /// Uses Supabase Realtime (WebSocket) — not a PostgREST query.
-  Stream<Map<String, dynamic>?> watchLiveScore(String matchId) {
-    return _client
-        .from('live_scores')
-        .stream(primaryKey: ['match_id'])
-        .eq('match_id', matchId)
-        .map((rows) {
-          if (rows.isEmpty) return null;
-          final raw = rows.first['score_state'];
-          if (raw == null) return null;
-          return Map<String, dynamic>.from(raw as Map);
-        });
+  /// One-shot fetch of the current score state via RPC (no raw table query).
+  /// Returns null if the match has ended (live_score row deleted).
+  Future<Map<String, dynamic>?> getLiveScore(String matchId) async {
+    final result = await _client
+        .rpc('get_live_score', params: {'p_match_id': matchId});
+    if (result == null) return null;
+    return Map<String, dynamic>.from(result as Map);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

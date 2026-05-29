@@ -10,7 +10,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../bloc/auth_cubit.dart' show AuthBloc;
-import '../bloc/group_cubit.dart' show GroupBloc, LeaveGroupEvent, DeleteGroupEvent;
+import '../bloc/group_cubit.dart'
+    show GroupBloc, LeaveGroupEvent, DeleteGroupEvent, RenameGroupEvent;
+import '../bloc/match_bloc.dart';
 import '../models/group_model.dart';
 import '../models/match_models.dart';
 import '../services/group_repository.dart';
@@ -116,24 +118,87 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = widget.group.createdBy == context.read<AuthBloc>().userId;
+    final authBloc    = context.read<AuthBloc>();
+    final currentUser = authBloc.userId ?? '';
+
+    // Use the live group from GroupBloc so the name updates after a rename.
+    final stateGroups = context.watch<GroupBloc>().state.groups;
+    final liveGroup   = stateGroups.firstWhere(
+      (g) => g.id == widget.group.id,
+      orElse: () => widget.group,
+    );
+    final isAdmin = liveGroup.createdBy == currentUser;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppColors.bg,
+        systemNavigationBarIconBrightness: Brightness.dark,
       ),
       child: Scaffold(
         backgroundColor: AppColors.bg,
+        floatingActionButton: _NewMatchFab(
+            onTap: () {
+              context.read<MatchBloc>().add(ResetMatch());
+              context.read<ScoreBloc>().add(ResetScoreboard());
+              context.push('/match/setup', extra: {'groupId': widget.group.id});
+            },
+          ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         body: Column(
           children: [
             _GroupDetailHeader(
-              group: widget.group,
-              tabController: _tab,
+              group: liveGroup,
               isAdmin: isAdmin,
               onLeave: _confirmLeave,
               onDelete: _confirmDelete,
+            ),
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TabBar(
+                controller: _tab,
+                dividerColor: Colors.transparent,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: WidgetStateProperty.all(Colors.transparent),
+                indicator: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicatorPadding: EdgeInsets.zero,
+                labelPadding: EdgeInsets.zero,
+                labelColor: Colors.white,
+                unselectedLabelColor: AppColors.textSecondary,
+                labelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                unselectedLabelStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                tabs: const [
+                  Tab(height: 38, text: 'Matches'),
+                  Tab(height: 38, text: 'Leaderboard'),
+                  Tab(height: 38, text: 'Members'),
+                ],
+              ),
             ),
             Expanded(
               child: TabBarView(
@@ -141,7 +206,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                 children: [
                   _MatchesTab(repo: _repo, groupId: widget.group.id),
                   _LeaderboardTab(repo: _repo, groupId: widget.group.id),
-                  _MembersTab(repo: _repo, groupId: widget.group.id),
+                  _MembersTab(
+                    repo: _repo,
+                    groupId: widget.group.id,
+                    isAdmin: isAdmin,
+                    currentUserId: currentUser,
+                  ),
                 ],
               ),
             ),
@@ -157,14 +227,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 class _GroupDetailHeader extends StatelessWidget {
   final Group group;
-  final TabController tabController;
   final bool isAdmin;
   final VoidCallback onLeave;
   final VoidCallback onDelete;
 
   const _GroupDetailHeader({
     required this.group,
-    required this.tabController,
     required this.isAdmin,
     required this.onLeave,
     required this.onDelete,
@@ -241,103 +309,151 @@ class _GroupDetailHeader extends StatelessWidget {
       // Stack lets the TabBar fill the full width while the icons are
       // overlaid at the edges — tab labels are never clipped.
       bottomChild: SizedBox(
-        height: 64, // Slightly taller for a nice pitch display
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // 1. Realistic Pitch Background
-            Positioned.fill(
-              child: CustomPaint(
-                painter: RealisticPitchPainter(),
-              ),
-            ),
-            
-            // 2. TabBar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 46),
-              child: TabBar(
-                controller: tabController,
-                dividerColor: Colors.transparent,
-                indicator: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+        height: 56,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            const h = 56.0;
+            const topY    = h * 0.15;
+            const bottomY = h * 0.95;
+
+            // Mirror the same trapezoid used by RealisticPitchPainter.
+            final pitchTopLeft     = w * 0.05;
+            final pitchTopRight    = w * 0.95;
+            final pitchBottomLeft  = -w * 0.05;
+            final pitchBottomRight = w * 1.05;
+
+            double getX(double pct, double y) => y == topY
+                ? pitchTopLeft  + (pitchTopRight  - pitchTopLeft)  * pct
+                : pitchBottomLeft + (pitchBottomRight - pitchBottomLeft) * pct;
+
+            // Bowling crease percentages MUST match RealisticPitchPainter exactly (0.08 and 0.92).
+            const leftPct  = 0.08;
+            const rightPct = 0.92;
+
+            // Calculate exact midpoint Y of the perspective pitch
+            final midY = (topY + bottomY) / 2;
+
+            // Calculate exact X at the midpoint Y
+            final leftCreaseX  = (getX(leftPct,  topY) + getX(leftPct,  bottomY)) / 2;
+            final rightCreaseX = (getX(rightPct, topY) + getX(rightPct, bottomY)) / 2;
+
+            // Half-widths of each icon
+            const leftIconHalfW  = 9.0;
+            const rightIconHalfW = 10.0;
+
+            // To make the base of the shadow sit EXACTLY on the midY line:
+            // total height = image height + padding (2px)
+            final leftIconTop = midY - 40.0;  // 38px image + 2px padding
+            final rightIconTop = midY - 36.0; // 34px image + 2px padding
+
+            // Calculate ball position (rolling away from the knocked wicket)
+            final ballX = leftCreaseX + 36.0;
+            final ballY = midY + 4.0;
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // ── Cricket pitch background ─────────────────────────────
+                Positioned.fill(
+                  child: CustomPaint(painter: RealisticPitchPainter()),
                 ),
-                indicatorPadding: const EdgeInsets.symmetric(vertical: -4, horizontal: -10),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white.withValues(alpha: 0.65),
-                labelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900),
-                unselectedLabelStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-                tabs: const [
-                  Tab(text: 'Matches'),
-                  Tab(text: 'Leaderboard'),
-                  Tab(text: 'Members'),
-                ],
-              ),
-            ),
 
-            // 3. Left Knocked Wicket (placed exactly at the bowling crease center)
-            Positioned(
-              left: 10, // Centers the 32px wide image roughly at x = 26
-              top: 10, // Centers it vertically
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  // Ground Shadow
-                  Positioned(
-                    bottom: 0,
-                    child: Container(
-                      width: 20, height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: const BorderRadius.all(Radius.elliptical(10, 2)),
+                // ── Cricket Ball ──────────────────────────────────────────
+                Positioned(
+                  left: ballX - 7,
+                  top: ballY - 14,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Small shadow on the pitch
+                      Positioned(
+                        bottom: -1,
+                        child: Container(
+                          width: 10, height: 3,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: const BorderRadius.all(Radius.elliptical(5, 1.5)),
+                          ),
+                        ),
                       ),
-                    ),
+                      // The ball
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Image.asset(
+                          'assets/icons/ic_cricket_ball_icon.png',
+                          height: 14,
+                        ),
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Image.asset(
-                      'assets/icons/wicket_out_icon.png',
-                      height: 38,
-                      color: Colors.white,
-                      colorBlendMode: BlendMode.srcIn,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
 
-            // 4. Right Standing Wicket
-            Positioned(
-              right: 10, 
-              top: 10,
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Positioned(
-                    bottom: 0,
-                    child: Container(
-                      width: 16, height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: const BorderRadius.all(Radius.elliptical(8, 2)),
+                // ── Left: knocked/fallen wicket ──────────────────────────
+                Positioned(
+                  left: leftCreaseX - leftIconHalfW,
+                  top: leftIconTop,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      Positioned(
+                        bottom: 0,
+                        child: Container(
+                          width: 18, height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: const BorderRadius.all(
+                                Radius.elliptical(9, 2)),
+                          ),
+                        ),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Image.asset(
+                          'assets/icons/wicket_out_icon.png',
+                          height: 38,
+                          color: Colors.white,
+                          colorBlendMode: BlendMode.srcIn,
+                        ),
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Image.asset(
-                      'assets/icons/wickets.png',
-                      height: 34,
-                      color: Colors.white,
-                      colorBlendMode: BlendMode.srcIn,
-                    ),
+                ),
+
+                // ── Right: standing wickets (three upright stumps) ────────
+                Positioned(
+                  left: rightCreaseX - rightIconHalfW,
+                  top: rightIconTop,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      Positioned(
+                        bottom: 0,
+                        child: Container(
+                          width: 20, height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: const BorderRadius.all(
+                                Radius.elliptical(10, 2)),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Image.asset(
+                          'assets/icons/wickets.png',
+                          height: 34,
+                          color: Colors.white,
+                          colorBlendMode: BlendMode.srcIn,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -384,6 +500,57 @@ class _GroupDetailHeader extends StatelessWidget {
                         color: AppColors.textPrimary)),
                 const SizedBox(height: 20),
                 if (isAdmin) ...[
+                  // ── Admin: Rename Group ──────────────────────────────
+                  TapBounce(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showRenameSheet(context);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                shape: BoxShape.circle),
+                            child: const Icon(Icons.edit_rounded,
+                                color: AppColors.primary, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Rename Group',
+                                    style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary)),
+                                SizedBox(height: 2),
+                                Text('Change the group name',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded,
+                              color: AppColors.textMuted),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
                   // ── Admin: Delete Group ──────────────────────────────
                   TapBounce(
                     onTap: () {
@@ -492,13 +659,170 @@ class _GroupDetailHeader extends StatelessWidget {
       },
     );
   }
+
+  void _showRenameSheet(BuildContext context) {
+    showModalBottomSheet(
+      context       : context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _RenameGroupSheet(group: group),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rename Group Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+class _RenameGroupSheet extends StatefulWidget {
+  final Group group;
+  const _RenameGroupSheet({required this.group});
+
+  @override
+  State<_RenameGroupSheet> createState() => _RenameGroupSheetState();
+}
+
+class _RenameGroupSheetState extends State<_RenameGroupSheet> {
+  late final TextEditingController _ctrl;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.group.name);
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 100),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text('Rename Group',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 4),
+            const Text('Enter a new name for this group.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _ctrl,
+              focusNode: _focusNode,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                hintText: 'Group name',
+                prefixIcon: const Icon(Icons.group_rounded,
+                    color: AppColors.primary),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide:
+                      const BorderSide(color: AppColors.primary, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    _focusNode.unfocus();
+                    Navigator.pop(context);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final name = _ctrl.text.trim();
+                      if (name.isEmpty) return;
+                      _focusNode.unfocus();
+                      Navigator.pop(context);
+                      context
+                          .read<GroupBloc>()
+                          .add(RenameGroupEvent(widget.group.id, name));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Group renamed to "$name".'),
+                        backgroundColor: AppColors.success,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Save',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab 1 — Matches
-// Uses a FutureBuilder for the initial reliable load, then a StreamBuilder
-// for live updates.  Storing both in initState prevents them from being
-// recreated on every rebuild (which would reset ConnectionState → waiting).
+// Initial load via RPC (get_group_matches).
+// Live updates via Supabase Realtime channel — on any change the tab
+// re-fetches through the same RPC so there are zero raw table queries.
 // ─────────────────────────────────────────────────────────────────────────────
 class _MatchesTab extends StatefulWidget {
   final GroupRepository repo;
@@ -511,8 +835,10 @@ class _MatchesTab extends StatefulWidget {
 
 class _MatchesTabState extends State<_MatchesTab>
     with AutomaticKeepAliveClientMixin {
-  late final Future<List<MatchSummary>> _initialFuture;
-  late final Stream<List<MatchSummary>> _liveStream;
+  List<MatchSummary> _matches  = [];
+  bool              _loading   = true;
+  String?           _error;
+  RealtimeChannel?  _channel;
 
   @override
   bool get wantKeepAlive => true;
@@ -520,66 +846,86 @@ class _MatchesTabState extends State<_MatchesTab>
   @override
   void initState() {
     super.initState();
-    // Both are created once in initState — safe from rebuild-driven recreation.
-    _initialFuture = widget.repo.getGroupMatches(widget.groupId);
-    _liveStream    = widget.repo.watchGroupMatches(widget.groupId);
+    _fetch();
+    _subscribeRealtime();
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
+
+  // ── Initial + refresh fetch via RPC ────────────────────────────────────────
+  Future<void> _fetch() async {
+    try {
+      final matches = await widget.repo.getGroupMatches(widget.groupId);
+      if (mounted) {
+        setState(() { _matches = matches; _loading = false; _error = null; });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _error = e.toString(); _loading = false; });
+      }
+    }
+  }
+
+  // ── Realtime channel — no raw table queries ────────────────────────────────
+  void _subscribeRealtime() {
+    _channel = Supabase.instance.client
+        .channel('grp_matches_${widget.groupId}')
+        .onPostgresChanges(
+          event : PostgresChangeEvent.all,
+          schema: 'public',
+          table : 'matches',
+          filter: PostgresChangeFilter(
+            type  : PostgresChangeFilterType.eq,
+            column: 'group_id',
+            value : widget.groupId,
+          ),
+          callback: (_) => _fetch(),
+        )
+        .subscribe();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    // FutureBuilder gives us a fast, guaranteed first render.
-    // StreamBuilder overlays real-time updates on top once the subscription
-    // is active, but falls back to the Future data if the stream is slow.
-    return FutureBuilder<List<MatchSummary>>(
-      future: _initialFuture,
-      builder: (context, futureSnap) {
-        // Before the initial HTTP call resolves, show the spinner once.
-        if (futureSnap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-                color: AppColors.primary, strokeWidth: 2),
-          );
-        }
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(
+            color: AppColors.primary, strokeWidth: 2),
+      );
+    }
 
-        // Once we have the initial data, overlay the realtime stream.
-        return StreamBuilder<List<MatchSummary>>(
-          stream: _liveStream,
-          // seed with the future data so we never flash an empty state while
-          // waiting for the first stream event.
-          initialData: futureSnap.data ?? const [],
-          builder: (context, streamSnap) {
-            if (streamSnap.hasError) {
-              return _CentreMsg(
-                  icon: Icons.wifi_off_rounded,
-                  title: 'Could not load matches',
-                  sub: streamSnap.error.toString());
-            }
-            final matches = streamSnap.data ?? futureSnap.data ?? const [];
-            if (matches.isEmpty) {
-              return const _CentreMsg(
-                icon: Icons.sports_cricket_rounded,
-                title: 'No matches yet',
-                sub: 'Start a match and assign it to this group.',
-              );
-            }
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-              itemCount: matches.length,
-              itemBuilder: (ctx, i) => FadeInEntrance(
-                key: ValueKey(matches[i].id),
-                delay: Duration(milliseconds: 50 * i),
-                offset: const Offset(0, 16),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _GroupMatchCard(match: matches[i]),
-                ),
-              ),
-            );
-          },
-        );
-      },
+    if (_error != null) {
+      return _CentreMsg(
+          icon : Icons.wifi_off_rounded,
+          title: 'Could not load matches',
+          sub  : _error!);
+    }
+
+    if (_matches.isEmpty) {
+      return const _CentreMsg(
+        icon : Icons.sports_cricket_rounded,
+        title: 'No matches yet',
+        sub  : 'Start a match and assign it to this group.',
+      );
+    }
+
+    return ListView.builder(
+      padding    : const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      itemCount  : _matches.length,
+      itemBuilder: (ctx, i) => FadeInEntrance(
+        key  : ValueKey(_matches[i].id),
+        delay: Duration(milliseconds: 50 * i),
+        offset: const Offset(0, 16),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child  : _GroupMatchCard(match: _matches[i]),
+        ),
+      ),
     );
   }
 }
@@ -593,15 +939,16 @@ class _GroupMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLive = match.status == 'live';
+    final isLive = match.status == 'in_progress';
     final isCompleted = match.status == 'completed';
 
     return TapBounce(
       onTap: () {
         if (isLive) {
           context.push('/live/${match.id}', extra: {
-            'teamAName': match.teamAName,
-            'teamBName': match.teamBName,
+            'teamAName' : match.teamAName,
+            'teamBName' : match.teamBName,
+            'totalOvers': match.totalOvers,
           });
         } else if (isCompleted && match.scoreData != null) {
           final state = ScoreState.fromJson(match.scoreData!);
@@ -711,7 +1058,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLive = status == 'live';
+    final isLive = status == 'in_progress';
     final isCompleted = status == 'completed';
     final color = isLive
         ? AppColors.success
@@ -799,6 +1146,14 @@ class _LeaderboardTab extends StatefulWidget {
 class _LeaderboardTabState extends State<_LeaderboardTab>
     with AutomaticKeepAliveClientMixin {
   final ValueNotifier<int> _tabNotifier = ValueNotifier<int>(0);
+  late final Future<List<MatchSummary>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    // Stored once — prevents a new network call on every rebuild.
+    _future = widget.repo.getGroupMatches(widget.groupId);
+  }
 
   @override
   void dispose() {
@@ -813,7 +1168,7 @@ class _LeaderboardTabState extends State<_LeaderboardTab>
   Widget build(BuildContext context) {
     super.build(context);
     return FutureBuilder<List<MatchSummary>>(
-      future: widget.repo.getGroupMatches(widget.groupId),
+      future: _future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -1042,15 +1397,65 @@ class _LeaderboardList extends StatelessWidget {
 class _MembersTab extends StatefulWidget {
   final GroupRepository repo;
   final String groupId;
-  const _MembersTab({required this.repo, required this.groupId});
+  final bool isAdmin;
+  final String currentUserId;
+
+  const _MembersTab({
+    required this.repo,
+    required this.groupId,
+    required this.isAdmin,
+    required this.currentUserId,
+  });
 
   @override
   State<_MembersTab> createState() => _MembersTabState();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Members Cubit for clean local state
+// ─────────────────────────────────────────────────────────────────────────────
+abstract class MembersState {}
+class MembersLoading extends MembersState {}
+class MembersLoaded extends MembersState {
+  final List<GroupMember> members;
+  MembersLoaded(this.members);
+}
+class MembersError extends MembersState {
+  final String message;
+  MembersError(this.message);
+}
+
+class MembersCubit extends Cubit<MembersState> {
+  final GroupRepository repo;
+  final String groupId;
+
+  MembersCubit({required this.repo, required this.groupId}) : super(MembersLoading()) {
+    load();
+  }
+
+  Future<void> load() async {
+    emit(MembersLoading());
+    try {
+      final members = await repo.getGroupMembers(groupId);
+      emit(MembersLoaded(members));
+    } catch (e) {
+      emit(MembersError(e.toString()));
+    }
+  }
+
+  Future<void> kickMember(String userId) async {
+    try {
+      await repo.kickMember(groupId, userId);
+      await load(); // Reload members after kick
+    } catch (e) {
+      rethrow;
+    }
+  }
+}
+
 class _MembersTabState extends State<_MembersTab>
     with AutomaticKeepAliveClientMixin {
-  late final Future<List<GroupMember>> _future;
+  late final MembersCubit _cubit;
 
   @override
   bool get wantKeepAlive => true;
@@ -1058,48 +1463,125 @@ class _MembersTabState extends State<_MembersTab>
   @override
   void initState() {
     super.initState();
-    _future = widget.repo.getGroupMembers(widget.groupId);
+    _cubit = MembersCubit(repo: widget.repo, groupId: widget.groupId);
+  }
+
+  @override
+  void dispose() {
+    _cubit.close();
+    super.dispose();
+  }
+
+  Future<void> _kickMember(GroupMember member) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Remove Member',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+        content: Text(
+          'Remove "${member.displayName}" from this group? They can rejoin with the invite code.',
+          style: const TextStyle(
+              color: AppColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove',
+                style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _cubit.kickMember(member.userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"${member.displayName}" removed from group.'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Failed to remove: ${e.toString()}'),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return FutureBuilder<List<GroupMember>>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+    return BlocBuilder<MembersCubit, MembersState>(
+      bloc: _cubit,
+      builder: (context, state) {
+        if (state is MembersLoading) {
           return const Center(
             child: CircularProgressIndicator(
                 color: AppColors.primary, strokeWidth: 2),
           );
         }
-        if (snap.hasError) {
+        if (state is MembersError) {
           return _CentreMsg(
               icon: Icons.people_outline_rounded,
               title: 'Could not load members',
-              sub: snap.error.toString());
+              sub: state.message);
         }
-        final members = snap.data ?? const [];
-        if (members.isEmpty) {
-          return const _CentreMsg(
-            icon: Icons.people_outline_rounded,
-            title: 'No members yet',
-            sub: 'Share the invite code to add friends.',
+        if (state is MembersLoaded) {
+          final members = state.members;
+          if (members.isEmpty) {
+            return const _CentreMsg(
+              icon: Icons.people_outline_rounded,
+              title: 'No members yet',
+              sub: 'Share the invite code to add friends.',
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
+            itemCount: members.length,
+            itemBuilder: (ctx, i) {
+              final m         = members[i];
+              // Admins can kick non-admin members that are not themselves.
+              final canKick   = widget.isAdmin &&
+                  !m.isAdmin &&
+                  m.userId != widget.currentUserId;
+              return FadeInEntrance(
+                key: ValueKey(m.userId),
+                delay: Duration(milliseconds: 50 * i),
+                offset: const Offset(0, 12),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _MemberTile(
+                    member: m,
+                    canKick: canKick,
+                    onKick: canKick ? () => _kickMember(m) : null,
+                  ),
+                ),
+              );
+            },
           );
         }
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
-          itemCount: members.length,
-          itemBuilder: (ctx, i) => FadeInEntrance(
-            key: ValueKey(members[i].userId),
-            delay: Duration(milliseconds: 50 * i),
-            offset: const Offset(0, 12),
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _MemberTile(member: members[i]),
-            ),
-          ),
-        );
+        return const SizedBox.shrink();
       },
     );
   }
@@ -1107,11 +1589,21 @@ class _MembersTabState extends State<_MembersTab>
 
 class _MemberTile extends StatelessWidget {
   final GroupMember member;
-  const _MemberTile({required this.member});
+  final bool canKick;
+  final VoidCallback? onKick;
+
+  const _MemberTile({
+    required this.member,
+    this.canKick = false,
+    this.onKick,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return TapBounce(
+      onTap: () => context.push('/player/${member.userId}',
+          extra: {'displayName': member.displayName}),
+      child: Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -1164,39 +1656,67 @@ class _MemberTile extends StatelessWidget {
           // Role badge
           if (member.isAdmin)
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                gradient: AppColors.goldGradient,
-                borderRadius: BorderRadius.circular(10),
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text('ADMIN',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.5)),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shield_rounded, size: 12, color: AppColors.primary),
+                  SizedBox(width: 4),
+                  Text('Admin',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary)),
+                ],
+              ),
             )
           else
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.2)),
+                color: AppColors.textMuted.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text('MEMBER',
+              child: const Text('Member',
                   style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primary,
-                      letterSpacing: 0.5)),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
             ),
+
+          // Kick button — only visible to admins for non-admin members
+          if (canKick) ...[
+            const SizedBox(width: 12),
+            TapBounce(
+              onTap: onKick!, // canKick guard ensures onKick != null
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    )
+                  ],
+                ),
+                child: const Icon(Icons.close_rounded,
+                    size: 16, color: AppColors.textSecondary),
+              ),
+            ),
+          ],
         ],
       ),
-    );
+    ),    // Container
+    );    // TapBounce
   }
 
   String _joinLabel(DateTime dt) {
@@ -1315,7 +1835,7 @@ class _QrInviteSheetState extends State<_QrInviteSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 32),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 100),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -1488,6 +2008,134 @@ class _QrInviteSheetState extends State<_QrInviteSheet> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated "New Match" FAB
+// Two independent controllers keep entrance and glow from interfering:
+//   _entranceCtrl — one-shot slide-up + fade-in
+//   _glowCtrl     — endless shadow-opacity pulse
+// ─────────────────────────────────────────────────────────────────────────────
+class _NewMatchFab extends StatefulWidget {
+  final VoidCallback onTap;
+  const _NewMatchFab({required this.onTap});
+
+  @override
+  State<_NewMatchFab> createState() => _NewMatchFabState();
+}
+
+class _NewMatchFabState extends State<_NewMatchFab>
+    with TickerProviderStateMixin {
+  // Entrance (runs once)
+  late final AnimationController _entranceCtrl;
+  late final Animation<Offset> _slide;
+  late final Animation<double>  _fade;
+
+  // Glow pulse (repeats forever)
+  late final AnimationController _glowCtrl;
+  late final Animation<double>   _glow;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    );
+    _slide = Tween<Offset>(begin: const Offset(0, 2.5), end: Offset.zero)
+        .animate(CurvedAnimation(
+          parent: _entranceCtrl, curve: Curves.elasticOut));
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _entranceCtrl,
+          curve: const Interval(0.0, 0.45, curve: Curves.easeIn)));
+
+    _glowCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    _glow = Tween<double>(begin: 0.22, end: 0.52).animate(
+        CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+
+    // Small delay so the FAB doesn't pop in while the screen is still settling.
+    Future.delayed(const Duration(milliseconds: 180), () {
+      if (mounted) _entranceCtrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _entranceCtrl.dispose();
+    _glowCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([_entranceCtrl, _glowCtrl]),
+      builder: (context, child) {
+        return FadeTransition(
+          opacity: _fade,
+          child: SlideTransition(
+            position: _slide,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: _glow.value),
+                    blurRadius: 30,
+                    spreadRadius: 5,
+                  ),
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.38),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(32),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(32),
+          splashColor: Colors.white.withValues(alpha: 0.2),
+          highlightColor: Colors.white.withValues(alpha: 0.1),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(32),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.sports_cricket_rounded,
+                    color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'New Match',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

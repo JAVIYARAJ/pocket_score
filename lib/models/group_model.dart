@@ -51,6 +51,15 @@ class Group extends Equatable {
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
 
+  Group copyWith({String? name, int? memberCount}) => Group(
+        id         : id,
+        name       : name       ?? this.name,
+        inviteCode : inviteCode,
+        createdBy  : createdBy,
+        memberCount: memberCount ?? this.memberCount,
+        createdAt  : createdAt,
+      );
+
   @override
   List<Object?> get props =>
       [id, name, inviteCode, createdBy, memberCount, createdAt];

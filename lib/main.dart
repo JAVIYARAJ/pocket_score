@@ -42,6 +42,7 @@ import 'screens/scoring_screen.dart';
 import 'screens/result_screen.dart';
 import 'screens/scorecard_screen.dart';
 import 'screens/live_score_screen.dart';
+import 'screens/player_profile_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -151,15 +152,6 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
               GoRoute(
                 path: '/groups',
                 builder: (_, __) => const GroupsScreen(),
-                routes: [
-                  GoRoute(
-                    path: ':id',
-                    builder: (context, state) {
-                      final group = state.extra as Group;
-                      return GroupDetailScreen(group: group);
-                    },
-                  ),
-                ],
               ),
             ]),
             StatefulShellBranch(routes: [
@@ -175,8 +167,25 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           ],
         ),
 
+        // ── Group Detail ────────────────────────────────────────────────
+        GoRoute(
+          path: '/groups/:id',
+          builder: (context, state) {
+            final group = state.extra as Group;
+            return GroupDetailScreen(group: group);
+          },
+        ),
+
         // ── Match flow ──────────────────────────────────────────────────
-        GoRoute(path: '/match/setup', builder: (_, __) => const MatchSetupScreen()),
+        GoRoute(
+          path: '/match/setup',
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>?;
+            final groupId = extra?['groupId'] as String?;
+            final isRematch = extra?['isRematch'] as bool? ?? false;
+            return MatchSetupScreen(preselectedGroupId: groupId, isRematch: isRematch);
+          },
+        ),
         GoRoute(path: '/match/teams', builder: (_, __) => const TeamSelectionScreen()),
         GoRoute(
           path: '/match/preview',
@@ -209,9 +218,10 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           builder: (context, state) {
             final extra = state.extra! as Map<String, dynamic>;
             return LiveScoreScreen(
-              matchId: state.pathParameters['matchId']!,
-              teamAName: extra['teamAName'] as String,
-              teamBName: extra['teamBName'] as String,
+              matchId   : state.pathParameters['matchId']!,
+              teamAName : extra['teamAName']  as String,
+              teamBName : extra['teamBName']  as String,
+              totalOvers: (extra['totalOvers'] as int?) ?? 0,
             );
           },
         ),
@@ -220,6 +230,19 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           builder: (context, state) {
             final scoreState = state.extra! as ScoreState;
             return ScorecardScreen(scoreState: scoreState);
+          },
+        ),
+
+        // ── Player profile — opens from member lists, leaderboards, etc. ───
+        GoRoute(
+          path: '/player/:userId',
+          builder: (context, state) {
+            final extra       = state.extra as Map<String, dynamic>?;
+            return PlayerProfileScreen(
+              userId      : state.pathParameters['userId']!,
+              displayName : extra?['displayName'] as String?,
+              avatarUrl   : extra?['avatarUrl']   as String?,
+            );
           },
         ),
       ],

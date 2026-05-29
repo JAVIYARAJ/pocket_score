@@ -91,16 +91,23 @@ class ScoringScreen extends StatelessWidget {
       }
     }
     context.read<MatchListBloc>().add(UpdateMatchInList(MatchSummary(
-      id: ms.matchId!,
-      teamAName: aName, teamBName: bName,
-      teamA: ms.teamA, teamB: ms.teamB,
-      totalOvers: ms.settings?.totalOvers ?? 0,
-      status: done ? 'completed' : 'in_progress',
-      createdAt: DateTime.now(),
-      teamAScore: aScore, teamAWickets: aWkts, teamAOvers: aOv,
-      teamBScore: bScore, teamBWickets: bWkts, teamBOvers: bOv,
-      scoreData: state.toJson(),
-      result: done
+      id          : ms.matchId!,
+      teamAName   : aName,
+      teamBName   : bName,
+      teamA       : ms.teamA,
+      teamB       : ms.teamB,
+      totalOvers  : ms.settings?.totalOvers ?? 0,
+      status      : done ? 'completed' : 'in_progress',
+      createdAt   : DateTime.now(),
+      teamAScore  : aScore,
+      teamAWickets: aWkts,
+      teamAOvers  : aOv,
+      teamBScore  : bScore,
+      teamBWickets: bWkts,
+      teamBOvers  : bOv,
+      scoreData   : state.toJson(),
+      groupId     : ms.settings?.groupId, // preserve group association on every update
+      result      : done
           ? (second.totalRuns > first!.totalRuns
               ? '${second.battingTeamName} won'
               : first.totalRuns > second.totalRuns
@@ -119,100 +126,35 @@ class ScoringScreen extends StatelessWidget {
     final aBatted = first.battingTeamName == teamA.name;
     final chasers = aBatted ? teamB.name : teamA.name;
 
-    showDialog(
+    showGeneralDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                gradient: AppColors.scoreGradient,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                    child: const Icon(Icons.sports_cricket_rounded, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('1ST INNINGS OVER', style: TextStyle(fontSize: 12, letterSpacing: 2, color: Colors.white70, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${first.battingTeamName} scored ${first.totalRuns}/${first.totalWickets}',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text('(${first.overDisplay} overs)', style: const TextStyle(color: Colors.white60, fontSize: 13)),
-                ],
-              ),
-            ),
-            // Target reveal
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.flag_rounded, color: AppColors.danger, size: 20),
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Target for $chasers', style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
-                          Text('$target runs', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.primaryGradient,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
-                    ),
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        context.push('/match/opening', extra: {
-                          'battingTeamName': aBatted ? teamB.name : teamA.name,
-                          'battingPlayers' : aBatted ? teamB.players : teamA.players,
-                          'bowlingPlayers' : aBatted ? teamA.players : teamB.players,
-                          'target'         : target,
-                        });
-                      },
-                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                      label: const Text('Start 2nd Innings', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(50),
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      barrierLabel: 'Innings Break',
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      transitionDuration: const Duration(milliseconds: 500),
+      pageBuilder: (context, anim1, anim2) {
+        return _InningsBreakDialog(
+          state: state,
+          target: target,
+          chasers: chasers,
+          aBatted: aBatted,
+          teamA: teamA,
+          teamB: teamB,
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = CurvedAnimation(parent: anim1, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.8, end: 1.0).animate(curve),
+          child: FadeTransition(
+            opacity: anim1,
+            child: child,
+          ),
+        );
+      },
     );
   }
+
 
   static void _confirmDiscard(BuildContext context) {
     showDialog(
@@ -518,7 +460,7 @@ class _Scoreboard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-      decoration: AppDecorations.gradientCard(AppColors.scoreGradient, radius: 24),
+      decoration: AppDecorations.gradientCard(AppColors.headerGradient, radius: 24),
       child: Column(children: [
         // Main score + overs
         Row(
@@ -725,7 +667,7 @@ class _PlayerStatus extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.scoreBlue.withValues(alpha: 0.05),
+              color: AppColors.primary.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
               border: const Border(top: BorderSide(color: AppColors.border)),
             ),
@@ -733,11 +675,11 @@ class _PlayerStatus extends StatelessWidget {
               Container(
                 width: 32, height: 32,
                 decoration: BoxDecoration(
-                  color: AppColors.scoreBlue.withValues(alpha: 0.1),
+                  color: AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.sports_baseball_rounded,
-                    size: 16, color: AppColors.scoreBlueLight),
+                    size: 16, color: AppColors.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1125,7 +1067,7 @@ class _ThisOver extends StatelessWidget {
     else if (b.runs == 6) { label = '6'; color = AppColors.six; }
     else if (b.runs == 4) { label = '4'; color = AppColors.four; }
     else if (b.runs == 0) { label = '•'; color = AppColors.dot; }
-    else { label = '${b.runs}'; color = AppColors.scoreBlueLight; }
+    else { label = '${b.runs}'; color = AppColors.primary; }
 
     return Container(
       margin: const EdgeInsets.only(right: 10),
@@ -1210,7 +1152,7 @@ class _OverHistory extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                           color: hasWkt
                               ? AppColors.wicket
-                              : AppColors.scoreBlueLight,
+                              : AppColors.primary,
                           height: 1.1)),
                   if (hasWkt)
                     Text('${ov.wickets}W',
@@ -1422,10 +1364,10 @@ class _BowlerPicker extends StatelessWidget {
                       children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: AppColors.scoreBlue.withValues(alpha: 0.1),
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                       child: Text(p.name[0],
                           style: const TextStyle(
-                              color: AppColors.scoreBlueLight,
+                              color: AppColors.primary,
                               fontWeight: FontWeight.w800)),
                     ),
                     const SizedBox(height: 8),
@@ -1853,4 +1795,396 @@ Widget _selBtn(String name, String id, String? current,
       ),
     ),
   );
+}
+
+// ── INNINGS BREAK DIALOG ──────────────────────────────────────────────
+class _InningsBreakDialog extends StatefulWidget {
+  final ScoreState state;
+  final int target;
+  final String chasers;
+  final bool aBatted;
+  final Team teamA;
+  final Team teamB;
+
+  const _InningsBreakDialog({
+    required this.state,
+    required this.target,
+    required this.chasers,
+    required this.aBatted,
+    required this.teamA,
+    required this.teamB,
+  });
+
+  @override
+  State<_InningsBreakDialog> createState() => _InningsBreakDialogState();
+}
+
+class _InningsBreakDialogState extends State<_InningsBreakDialog> with TickerProviderStateMixin {
+  late AnimationController _introCtrl;
+  late AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _introCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+
+    _introCtrl.forward().then((_) {
+      if (mounted) _pulseCtrl.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _introCtrl.dispose();
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = widget.state.firstInnings!;
+    final iconScale = CurvedAnimation(parent: _introCtrl, curve: const Interval(0.0, 0.6, curve: Curves.elasticOut));
+    final contentFade = CurvedAnimation(parent: _introCtrl, curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic));
+    final slideUp = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(contentFade);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface, // Reverted to app theme
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 40,
+              spreadRadius: 10,
+            )
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Broadcast Hero Header ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 40, bottom: 40, left: 24, right: 24),
+              decoration: const BoxDecoration(
+                gradient: AppColors.primaryGradient, // Reverted to native gradient
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  // Decorative circles for cricket environment
+                  Positioned(
+                    right: -40,
+                    top: -60,
+                    child: Container(width: 120, height: 120, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08))),
+                  ),
+                  Positioned(
+                    left: -40,
+                    bottom: -30,
+                    child: Container(width: 80, height: 80, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08))),
+                  ),
+                  Column(
+                    children: [
+                      ScaleTransition(
+                        scale: iconScale,
+                        child: Container(
+                          width: 80, height: 80,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white, // Light icon base
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(color: AppColors.primary.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 5)
+                            ],
+                          ),
+                          child: const Icon(Icons.sports_cricket_rounded, color: AppColors.primary, size: 40),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      FadeTransition(
+                        opacity: contentFade,
+                        child: SlideTransition(
+                          position: slideUp,
+                          child: Column(
+                            children: [
+                              const Text('INNINGS BREAK', style: TextStyle(fontSize: 12, letterSpacing: 4, color: Colors.white70, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 16),
+                              Text(
+                                first.battingTeamName,
+                                style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w700),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${first.totalRuns}/${first.totalWickets}',
+                                style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: Colors.white, height: 1.0, letterSpacing: -1),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              Text('(${first.overDisplay} overs)', style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Target Reveal LED Scoreboard ──
+            FadeTransition(
+              opacity: contentFade,
+              child: SlideTransition(
+                position: slideUp,
+                child: Container(
+                  width: double.infinity,
+                  color: AppColors.surface, 
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      const Text('TARGET SET', style: TextStyle(color: AppColors.textMuted, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 3.0)),
+                      const SizedBox(height: 16),
+                      
+                      AnimatedBuilder(
+                        animation: _pulseCtrl,
+                        builder: (context, child) {
+                          final pulse = Curves.easeInOut.transform(_pulseCtrl.value);
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceLight, 
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3 + (pulse * 0.4)), width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(alpha: 0.1 + (pulse * 0.1)),
+                                  blurRadius: 20 + (pulse * 10),
+                                  spreadRadius: pulse * 2,
+                                )
+                              ]
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '${widget.target}',
+                                  style: TextStyle(
+                                    fontSize: 64, 
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.primary,
+                                    height: 1.0,
+                                    shadows: [
+                                      Shadow(color: AppColors.primary.withValues(alpha: 0.3 * pulse), blurRadius: 10 * pulse),
+                                    ]
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text('RUNS TO WIN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 4, color: AppColors.textSecondary)),
+                              ],
+                            ),
+                          );
+                        }
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      Text('Chasing: ${widget.chasers}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 32),
+
+                      // Swipe to Chase integration!
+                      _DialogSwipeToStart(
+                        text: 'SWIPE TO CHASE',
+                        onSwipe: () {
+                          Navigator.pop(context);
+                          context.push('/match/opening', extra: {
+                            'battingTeamName': widget.aBatted ? widget.teamB.name : widget.teamA.name,
+                            'battingPlayers' : widget.aBatted ? widget.teamB.players : widget.teamA.players,
+                            'bowlingPlayers' : widget.aBatted ? widget.teamA.players : widget.teamB.players,
+                            'target'         : widget.target,
+                          });
+                        }
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── SWIPE COMPONENT FOR DIALOG ──────────────────
+class _DialogSwipeToStart extends StatefulWidget {
+  final VoidCallback onSwipe;
+  final String text;
+
+  const _DialogSwipeToStart({required this.onSwipe, required this.text});
+
+  @override
+  State<_DialogSwipeToStart> createState() => _DialogSwipeToStartState();
+}
+
+class _DialogSwipeToStartState extends State<_DialogSwipeToStart> {
+  late final ValueNotifier<double> _dragNotifier;
+  late final ValueNotifier<bool> _dragStateNotifier;
+  bool _completed = false;
+  final double _thumbSize = 52;
+
+  @override
+  void initState() {
+    super.initState();
+    _dragNotifier = ValueNotifier<double>(0);
+    _dragStateNotifier = ValueNotifier<bool>(false);
+  }
+
+  @override
+  void dispose() {
+    _dragNotifier.dispose();
+    _dragStateNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stackWidth = constraints.maxWidth - 12;
+        final maxDrag = stackWidth - _thumbSize;
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: _dragStateNotifier,
+          builder: (context, isDragging, _) {
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              height: 64,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isDragging
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : AppColors.surfaceLight.withValues(alpha: 0.5), 
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: isDragging ? AppColors.primary : AppColors.border,
+                  width: 2.0,
+                ),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.centerLeft,
+                children: [
+                  Center(
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _dragNotifier,
+                      builder: (context, dragOffset, child) {
+                        return AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: dragOffset > maxDrag * 0.2 ? 0.0 : 1.0,
+                          child: child,
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.text,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2.0,
+                                color: isDragging ? AppColors.primary : AppColors.textPrimary), 
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.keyboard_double_arrow_right_rounded,
+                              size: 20,
+                              color: (isDragging ? AppColors.primary : AppColors.textSecondary).withValues(alpha: 0.6)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  ValueListenableBuilder<double>(
+                    valueListenable: _dragNotifier,
+                    builder: (context, dragOffset, _) {
+                      return TweenAnimationBuilder<double>(
+                        duration: isDragging ? Duration.zero : const Duration(milliseconds: 500),
+                        curve: Curves.easeOutBack,
+                        tween: Tween<double>(begin: 0, end: dragOffset),
+                        builder: (context, value, child) {
+                          return Positioned(
+                            left: value,
+                            child: GestureDetector(
+                              onHorizontalDragStart: (_) {
+                                if (_completed) return;
+                                _dragStateNotifier.value = true;
+                              },
+                              onHorizontalDragUpdate: (details) {
+                                if (_completed) return;
+                                double newOffset = _dragNotifier.value + details.delta.dx;
+                                if (newOffset < 0) newOffset = 0;
+                                if (newOffset >= maxDrag) {
+                                  newOffset = maxDrag;
+                                  _completed = true;
+                                  _dragStateNotifier.value = false;
+                                  _dragNotifier.value = newOffset;
+                                  Future.delayed(const Duration(milliseconds: 200), widget.onSwipe);
+                                  return;
+                                }
+                                _dragNotifier.value = newOffset;
+                              },
+                              onHorizontalDragEnd: (details) {
+                                if (_completed) return;
+                                _dragStateNotifier.value = false;
+                                if (_dragNotifier.value > maxDrag * 0.7) {
+                                  _completed = true;
+                                  _dragNotifier.value = maxDrag;
+                                  Future.delayed(const Duration(milliseconds: 300), widget.onSwipe);
+                                } else {
+                                  _dragNotifier.value = 0;
+                                }
+                              },
+                              child: Container(
+                                width: _thumbSize,
+                                height: _thumbSize,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: isDragging ? 0.3 : 0.15),
+                                      blurRadius: isDragging ? 12 : 8,
+                                      offset: const Offset(0, 4),
+                                    )
+                                  ],
+                                ),
+                                child: Transform.rotate(
+                                  angle: value / 20,
+                                  child: Image.asset(
+                                    'assets/icons/ic_cricket_ball_icon.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }

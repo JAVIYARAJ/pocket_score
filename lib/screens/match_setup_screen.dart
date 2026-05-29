@@ -11,7 +11,16 @@ import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
 
 class MatchSetupScreen extends StatefulWidget {
-  const MatchSetupScreen({super.key});
+  /// When set, this group is pre-selected in the group dropdown.
+  /// Passed when launching a match directly from a GroupDetailScreen.
+  final String? preselectedGroupId;
+  final bool isRematch;
+
+  const MatchSetupScreen({
+    super.key,
+    this.preselectedGroupId,
+    this.isRematch = false,
+  });
 
   @override
   State<MatchSetupScreen> createState() => _MatchSetupScreenState();
@@ -44,6 +53,14 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
     _oversNotifier.value = ms.settings?.totalOvers ?? 5;
 
     _myGroups = context.read<GroupBloc>().state.groups;
+
+    // Pre-select the group when launched from GroupDetailScreen or rematch.
+    // Use the provided groupId directly — no need to verify it exists in
+    // _myGroups, which could be empty if GroupBloc hasn't loaded yet.
+    final preselect = widget.preselectedGroupId ?? (widget.isRematch ? ms.settings?.groupId : null);
+    if (preselect != null) {
+      _selectedGroupIdNotifier.value = preselect;
+    }
   }
 
   void _submit() {
@@ -170,8 +187,7 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
                                               MainAxisAlignment.center,
                                           children: [
                                             _overBtn(Icons.remove_rounded, () {
-                                              if (overs > 1)
-                                                _oversNotifier.value--;
+                                              if (overs > 1) { _oversNotifier.value--; }
                                             }),
                                             SizedBox(
                                               width: 120,
@@ -280,24 +296,61 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
                                             fontWeight: FontWeight.w700,
                                             color: AppColors.textPrimary)),
                                     const Spacer(),
-                                    const Text('Optional',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppColors.textMuted)),
+                                    // "Optional" when free to change; locked badge when from a group
+                                    if (widget.preselectedGroupId != null || widget.isRematch)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary
+                                              .withValues(alpha: 0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.lock_rounded,
+                                                size: 10,
+                                                color: AppColors.primary),
+                                            SizedBox(width: 4),
+                                            Text('Locked',
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: AppColors.primary)),
+                                          ],
+                                        ),
+                                      )
+                                    else
+                                      const Text('Optional',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textMuted)),
                                   ],
                                 ),
                                 const SizedBox(height: 14),
                                 GestureDetector(
-                                  onTap: _showGroupPicker,
+                                  // Disable tap when group is pre-selected from a GroupDetailScreen or isRematch
+                                  onTap: (widget.preselectedGroupId != null || widget.isRematch)
+                                      ? null
+                                      : _showGroupPicker,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 14),
                                     decoration: BoxDecoration(
-                                      color: AppColors.surfaceLight
-                                          .withValues(alpha: 0.6),
+                                      color: (widget.preselectedGroupId != null || widget.isRematch)
+                                          ? AppColors.primary
+                                              .withValues(alpha: 0.06)
+                                          : AppColors.surfaceLight
+                                              .withValues(alpha: 0.6),
                                       borderRadius: BorderRadius.circular(14),
-                                      border:
-                                          Border.all(color: AppColors.border),
+                                      border: Border.all(
+                                        color: (widget.preselectedGroupId != null || widget.isRematch)
+                                            ? AppColors.primary
+                                                .withValues(alpha: 0.25)
+                                            : AppColors.border,
+                                      ),
                                     ),
                                     child: ValueListenableBuilder<String?>(
                                         valueListenable:
@@ -331,11 +384,20 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
                                                   ),
                                                 ),
                                               ),
-                                              const Icon(
-                                                  Icons
-                                                      .keyboard_arrow_down_rounded,
-                                                  size: 22,
-                                                  color: AppColors.textMuted),
+                                              // Chevron when editable, lock when locked
+                                              Icon(
+                                                (widget.preselectedGroupId != null || widget.isRematch)
+                                                    ? Icons.lock_rounded
+                                                    : Icons
+                                                        .keyboard_arrow_down_rounded,
+                                                size: (widget.preselectedGroupId != null || widget.isRematch)
+                                                    ? 16
+                                                    : 22,
+                                                color: (widget.preselectedGroupId != null || widget.isRematch)
+                                                    ? AppColors.primary
+                                                        .withValues(alpha: 0.5)
+                                                    : AppColors.textMuted,
+                                              ),
                                             ],
                                           );
                                         }),

@@ -42,6 +42,14 @@ class DeleteGroupEvent extends GroupEvent {
   List<Object?> get props => [groupId];
 }
 
+class RenameGroupEvent extends GroupEvent {
+  final String groupId;
+  final String name;
+  const RenameGroupEvent(this.groupId, this.name);
+  @override
+  List<Object?> get props => [groupId, name];
+}
+
 // ── States ─────────────────────────────────────────────────────
 // All states expose a `groups` getter so the UI doesn't need type-switches
 // just to read the current list.
@@ -155,6 +163,20 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
       try {
         await _repo.deleteGroup(event.groupId);
         final updated = prev.where((g) => g.id != event.groupId).toList();
+        emit(GroupLoaded(updated));
+      } catch (e) {
+        emit(GroupError(e.toString(), previousGroups: prev));
+        emit(GroupLoaded(prev));
+      }
+    });
+
+    on<RenameGroupEvent>((event, emit) async {
+      final prev = state.groups;
+      try {
+        await _repo.renameGroup(event.groupId, event.name);
+        final updated = prev
+            .map((g) => g.id == event.groupId ? g.copyWith(name: event.name) : g)
+            .toList();
         emit(GroupLoaded(updated));
       } catch (e) {
         emit(GroupError(e.toString(), previousGroups: prev));

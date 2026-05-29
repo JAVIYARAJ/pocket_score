@@ -208,17 +208,6 @@ class _SplashScreenState extends State<SplashScreen>
                     ],
                   ),
                 ),
-
-                // ── Loading dots — pinned to bottom ───────────────
-                Positioned(
-                  bottom: 52,
-                  left:   0,
-                  right:  0,
-                  child: FadeTransition(
-                    opacity: _textOpacity,
-                    child: const Center(child: _LoadingDots()),
-                  ),
-                ),
               ],
             ),
           ),
@@ -228,121 +217,186 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   List<Widget> _decorations() => [
-        // Top-right circle arc
-        Positioned(
-          top: -80, right: -80,
-          child: Container(
-            width: 260, height: 260,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05), width: 40),
-            ),
-          ),
-        ),
-        // Bottom-left circle arc
-        Positioned(
-          bottom: -60, left: -60,
-          child: Container(
-            width: 200, height: 200,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.05), width: 30),
-            ),
-          ),
-        ),
-        // Faint pitch crease lines
+        // Stadium Background, Pitch & Wickets
         Positioned.fill(
-          child: CustomPaint(painter: _CreasePainter()),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final h = constraints.maxHeight;
+
+              // Isometric pitch coordinates (must match _StadiumPainter)
+              final topY = h * 0.20;
+              final botY = h * 0.95;
+              final bTopY = topY + (botY - topY) * 0.08; // Top bowling crease
+              final bBotY = topY + (botY - topY) * 0.92; // Bottom bowling crease
+
+              return Stack(
+                children: [
+                  // 1. The pitch
+                  CustomPaint(
+                    size: Size(w, h),
+                    painter: _StadiumPainter(),
+                  ),
+
+                  // 2. Top Wickets (Standing) - Scaled down for perspective
+                  Positioned(
+                    left: w / 2 - 25,
+                    top: bTopY - 50,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Image.asset(
+                        'assets/icons/wicket_out_icon.png',
+                        height: 50,
+                        color: Colors.white,
+                        colorBlendMode: BlendMode.srcIn,
+                      ),
+                    ),
+                  ),
+
+                  // 3. Bottom Wickets (Knocked Out) - Scaled up for foreground
+                  Positioned(
+                    left: w / 2 - 42,
+                    top: bBotY - 85,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Image.asset(
+                        'assets/icons/wickets.png',
+                        height: 85, // 85px to account for flying bails padding, making the stump appear ~75px
+                        color: Colors.white,
+                        colorBlendMode: BlendMode.srcIn,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Faint pitch crease lines painted on the background
+// Beautiful 3D Stadium & Pitch Painter
 // ─────────────────────────────────────────────────────────────────────────────
-class _CreasePainter extends CustomPainter {
+class _StadiumPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color       = Colors.white.withValues(alpha: 0.04)
-      ..strokeWidth = 1.5
-      ..style       = PaintingStyle.stroke;
+    // 1. Draw alternating grass stripes
+    final stripePaint = Paint();
+    const stripeCount = 12;
+    final stripeHeight = size.height / stripeCount;
+    for (int i = 0; i < stripeCount; i++) {
+      stripePaint.color = i.isEven 
+          ? Colors.white.withValues(alpha: 0.03) 
+          : Colors.transparent;
+      canvas.drawRect(
+        Rect.fromLTWH(0, i * stripeHeight, size.width, stripeHeight),
+        stripePaint,
+      );
+    }
 
-    final y1 = size.height * 0.30;
-    canvas.drawLine(Offset(size.width * 0.1, y1), Offset(size.width * 0.9, y1), p);
+    // 2. Draw a 3D isometric pitch in the center
+    final pitchPath = Path();
+    final topW = size.width * 0.35;
+    final botW = size.width * 0.85;
+    final topY = size.height * 0.20;
+    final botY = size.height * 0.95;
+    
+    pitchPath.moveTo(size.width / 2 - topW / 2, topY);
+    pitchPath.lineTo(size.width / 2 + topW / 2, topY);
+    pitchPath.lineTo(size.width / 2 + botW / 2, botY);
+    pitchPath.lineTo(size.width / 2 - botW / 2, botY);
+    pitchPath.close();
 
-    final y2 = size.height * 0.70;
-    canvas.drawLine(Offset(size.width * 0.1, y2), Offset(size.width * 0.9, y2), p);
+    // A subtle dirt/sand color for the pitch, mixed into the green
+    final pitchPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color(0xFFD4B895).withValues(alpha: 0.05),
+          const Color(0xFFD4B895).withValues(alpha: 0.15),
+        ],
+      ).createShader(Rect.fromLTWH(0, topY, size.width, botY - topY));
+    canvas.drawPath(pitchPath, pitchPaint);
 
+    // 3. Draw white crease lines inside the pitch
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.25)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    // Helper to get X width at a specific Y percentage
+    double getWidthAt(double pct) => topW + (botW - topW) * pct;
+
+    // Bowling crease Top (10%)
+    final bTopY = topY + (botY - topY) * 0.08;
+    final bTopW = getWidthAt(0.08);
     canvas.drawLine(
-      Offset(size.width / 2, size.height * 0.28),
-      Offset(size.width / 2, size.height * 0.72),
-      p,
+      Offset(size.width / 2 - bTopW / 2, bTopY),
+      Offset(size.width / 2 + bTopW / 2, bTopY),
+      linePaint,
     );
-  }
 
-  @override
-  bool shouldRepaint(_CreasePainter old) => false;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Animated three-dot loader at the bottom of the splash
-// ─────────────────────────────────────────────────────────────────────────────
-class _LoadingDots extends StatefulWidget {
-  const _LoadingDots();
-
-  @override
-  State<_LoadingDots> createState() => _LoadingDotsState();
-}
-
-class _LoadingDotsState extends State<_LoadingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync:    this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (_, __) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(3, (i) {
-          final t    = ((_ctrl.value + i / 3) % 1.0);
-          final ease = t * t * (3 - 2 * t); // smoothstep
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Transform.scale(
-              scale: 0.5 + 0.5 * ease,
-              child: Opacity(
-                opacity: 0.3 + 0.7 * ease,
-                child: Container(
-                  width: 7, height: 7,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
+    // Popping crease Top (18%)
+    final pTopY = topY + (botY - topY) * 0.18;
+    final pTopW = getWidthAt(0.18);
+    canvas.drawLine(
+      Offset(size.width / 2 - pTopW / 2, pTopY),
+      Offset(size.width / 2 + pTopW / 2, pTopY),
+      linePaint,
     );
+
+    // Popping crease Bottom (82%)
+    final pBotY = topY + (botY - topY) * 0.82;
+    final pBotW = getWidthAt(0.82);
+    canvas.drawLine(
+      Offset(size.width / 2 - pBotW / 2, pBotY),
+      Offset(size.width / 2 + pBotW / 2, pBotY),
+      linePaint,
+    );
+
+    // Bowling crease Bottom (92%)
+    final bBotY = topY + (botY - topY) * 0.92;
+    final bBotW = getWidthAt(0.92);
+    canvas.drawLine(
+      Offset(size.width / 2 - bBotW / 2, bBotY),
+      Offset(size.width / 2 + bBotW / 2, bBotY),
+      linePaint,
+    );
+
+    // 4. Stadium Spotlights
+    final spotPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.15),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromCircle(center: const Offset(0, 0), radius: size.width));
+
+    final spotPath1 = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width * 0.5, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(spotPath1, spotPaint);
+
+    final spotPaint2 = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.15),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromCircle(center: Offset(size.width, 0), radius: size.width));
+
+    final spotPath2 = Path()
+      ..moveTo(size.width, 0)
+      ..lineTo(size.width * 0.5, size.height)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(spotPath2, spotPaint2);
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }

@@ -56,6 +56,15 @@ class SignOut extends AuthEvent {
   const SignOut();
 }
 
+/// Debug-only: email + password sign-in. Never used in release builds.
+class SignInWithEmailPassword extends AuthEvent {
+  final String email;
+  final String password;
+  const SignInWithEmailPassword({required this.email, required this.password});
+  @override
+  List<Object?> get props => [email, password];
+}
+
 // Internal: fired from the Supabase auth stream — not for external use.
 class _AuthStateChanged extends AuthEvent {
   final sb.User? user;
@@ -146,6 +155,23 @@ class AuthBloc extends Bloc<AuthEvent, PocketAuthState> {
         _googleSignIn.signOut(),
       ]);
       // onAuthStateChange fires → _AuthStateChanged → AuthUnauthenticated
+    });
+
+    // Debug-only: email + password sign-in (never compiled into release builds
+    // because the UI that dispatches this event is gated by kDebugMode).
+    on<SignInWithEmailPassword>((event, emit) async {
+      try {
+        emit(const AuthLoading());
+        await _client.auth.signInWithPassword(
+          email   : event.email.trim(),
+          password: event.password,
+        );
+        // onAuthStateChange fires → _AuthStateChanged → AuthAuthenticated
+      } on sb.AuthException catch (e) {
+        emit(AuthError('Auth error: ${e.message}'));
+      } catch (e) {
+        emit(AuthError(e.toString()));
+      }
     });
 
     // Seed from the current session (synchronous on cold start).

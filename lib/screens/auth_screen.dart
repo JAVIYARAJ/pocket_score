@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import '../bloc/auth_cubit.dart' show AuthBloc, AuthError, AuthLoading, PocketAuthState, SignInWithGoogle;
+import 'package:flutter/foundation.dart' show kDebugMode;
+import '../bloc/auth_cubit.dart'
+    show AuthBloc, AuthError, AuthLoading, PocketAuthState, SignInWithGoogle, SignInWithEmailPassword;
 import '../theme/app_theme.dart';
 
 class AuthScreen extends StatelessWidget {
@@ -45,25 +47,30 @@ class AuthScreen extends StatelessWidget {
                   ),
 
                   SafeArea(
-                    child: Column(
-                      children: [
-                        // ── Top branding ──────────────────────────
-                        const SizedBox(height: 48),
-                        _buildBranding(),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          // ── Top branding ──────────────────────────
+                          const SizedBox(height: 48),
+                          _buildBranding(),
 
-                        const SizedBox(height: 40),
+                          const SizedBox(height: 40),
 
-                        // ── Cricket illustration ──────────────────
-                        _buildIllustration(),
+                          // ── Cricket illustration ──────────────────
+                          _buildIllustration(),
 
-                        const SizedBox(height: 40),
+                          const SizedBox(height: 40),
 
-                        // ── Card ──────────────────────────────────
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: _buildCard(context, state),
-                        ),
-                      ],
+                          // ── Card ──────────────────────────────────
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: _buildCard(context, state),
+                          ),
+                          
+                          // Add padding at the bottom to ensure the scroll area clears the screen edge
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -251,8 +258,13 @@ class AuthScreen extends StatelessWidget {
             ),
           ),
 
+          // ── Debug-only: email + password sign-in ────────────
+          if (kDebugMode) ...[
+            const SizedBox(height: 16),
+            const _DebugLoginSection(),
+          ],
+
           const SizedBox(height: 20),
-          
 
           // ── Info strip ──────────────────────────────────────
           Container(
@@ -273,6 +285,176 @@ class AuthScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Debug-only email + password login section.
+// Only compiled into debug builds (gated by kDebugMode in the parent widget).
+// Never visible in release / production builds.
+// ─────────────────────────────────────────────────────────────────────────────
+class _DebugLoginSection extends StatefulWidget {
+  const _DebugLoginSection();
+
+  @override
+  State<_DebugLoginSection> createState() => _DebugLoginSectionState();
+}
+
+class _DebugLoginSectionState extends State<_DebugLoginSection> {
+  final _emailCtrl    = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final email    = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (email.isEmpty || password.isEmpty) return;
+    context.read<AuthBloc>().add(
+      SignInWithEmailPassword(email: email, password: password),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.orange.withValues(alpha: 0.35),
+          style: BorderStyle.solid,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header badge
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  '🔧 DEBUG ONLY',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Email / Password sign-in',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Email
+          TextField(
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'test@example.com',
+              hintStyle: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+              prefixIcon: const Icon(Icons.email_outlined, size: 18),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.orange, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Password
+          TextField(
+            controller: _passwordCtrl,
+            obscureText: _obscure,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Password',
+              hintStyle: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18),
+              suffixIcon: GestureDetector(
+                onTap: () => setState(() => _obscure = !_obscure),
+                child: Icon(
+                  _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Colors.orange, width: 1.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Sign-in button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Sign In (Debug)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],

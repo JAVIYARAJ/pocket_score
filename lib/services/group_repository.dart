@@ -39,6 +39,22 @@ class GroupRepository {
     await _client.rpc('delete_group', params: {'p_group_id': groupId});
   }
 
+  /// Rename a group (admin only).
+  Future<void> renameGroup(String groupId, String newName) async {
+    await _client.rpc('rename_group', params: {
+      'p_group_id': groupId,
+      'p_name'    : newName.trim(),
+    });
+  }
+
+  /// Remove a member from a group (admin only; cannot kick self or other admins).
+  Future<void> kickMember(String groupId, String userId) async {
+    await _client.rpc('kick_member', params: {
+      'p_group_id': groupId,
+      'p_user_id' : userId,
+    });
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   //  Queries
   // ══════════════════════════════════════════════════════════════════════════
@@ -70,19 +86,6 @@ class GroupRepository {
       params: {'p_group_id': groupId},
     ) as List;
     return rows.map<MatchSummary>((r) => _matchFromRow(Map<String, dynamic>.from(r as Map))).toList();
-  }
-
-  /// Realtime stream — emits a new list whenever a group match changes.
-  /// Uses Supabase Realtime (WebSocket) — not a PostgREST query.
-  Stream<List<MatchSummary>> watchGroupMatches(String groupId) {
-    return _client
-        .from('matches')
-        .stream(primaryKey: ['id'])
-        .eq('group_id', groupId)
-        .order('created_at', ascending: false)
-        .map((rows) => rows
-            .map((r) => _matchFromRow(Map<String, dynamic>.from(r)))
-            .toList());
   }
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -564,47 +564,12 @@ class _MatchConfirmSheet extends StatelessWidget {
           const SizedBox(height: 24),
 
           // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textMuted,
-                    side: const BorderSide(color: AppColors.border),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Go Back', style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))],
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      onConfirm();
-                    },
-                    icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                    label: const Text('Start Match', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+          SwipeToStart(
+            text: 'SWIPE TO START',
+            onSwipe: () {
+              Navigator.pop(context);
+              onConfirm();
+            },
           ),
         ],
       ),
@@ -641,6 +606,199 @@ class _Row extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Swipe to Start Component
+// ─────────────────────────────────────────────────────────────────────────────
+class SwipeToStart extends StatefulWidget {
+  final VoidCallback onSwipe;
+  final String text;
+
+  const SwipeToStart({super.key, required this.onSwipe, required this.text});
+
+  @override
+  State<SwipeToStart> createState() => _SwipeToStartState();
+}
+
+class _SwipeToStartState extends State<SwipeToStart> {
+  late final ValueNotifier<double> _dragNotifier;
+  late final ValueNotifier<bool> _dragStateNotifier;
+  bool _completed = false;
+  
+  // Outer height = 64. Border = 2x2. Padding = 4x2.
+  // Inner Stack Height = 64 - 4 - 8 = 52.
+  // Thumb perfectly matches this to avoid any overflow.
+  final double _thumbSize = 52;
+
+  @override
+  void initState() {
+    super.initState();
+    _dragNotifier = ValueNotifier<double>(0);
+    _dragStateNotifier = ValueNotifier<bool>(false);
+  }
+
+  @override
+  void dispose() {
+    _dragNotifier.dispose();
+    _dragStateNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Border is 2px on each side. Padding is 4px on each side.
+        // Total horizontal inset = 4 + 8 = 12.
+        final stackWidth = constraints.maxWidth - 12;
+        final maxDrag = stackWidth - _thumbSize;
+
+        return ValueListenableBuilder<bool>(
+          valueListenable: _dragStateNotifier,
+          builder: (context, isDragging, _) {
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              height: 64,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isDragging
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : AppColors.surfaceLight.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: isDragging ? AppColors.primary : AppColors.border,
+                  width: 2.0, // Fixed border width for precise math
+                ),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none, // Extremely important: prevents any flat slicing!
+                alignment: Alignment.centerLeft,
+                children: [
+                  // Background track text
+                  Center(
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _dragNotifier,
+                      builder: (context, dragOffset, child) {
+                        return AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: dragOffset > maxDrag * 0.2 ? 0.0 : 1.0,
+                          child: child,
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.text,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2.0,
+                                color: isDragging
+                                    ? AppColors.primary
+                                    : AppColors.textPrimary),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.keyboard_double_arrow_right_rounded,
+                              size: 20,
+                              color: (isDragging
+                                      ? AppColors.primary
+                                      : AppColors.textPrimary)
+                                  .withValues(alpha: 0.6)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Draggable Thumb with synchronized position animation
+                  ValueListenableBuilder<double>(
+                    valueListenable: _dragNotifier,
+                    builder: (context, dragOffset, _) {
+                      return TweenAnimationBuilder<double>(
+                        duration: isDragging
+                            ? Duration.zero
+                            : const Duration(milliseconds: 500),
+                        curve: Curves.easeOutBack,
+                        tween: Tween<double>(begin: 0, end: dragOffset),
+                        builder: (context, value, child) {
+                          return Positioned(
+                            left: value,
+                            child: GestureDetector(
+                              onHorizontalDragStart: (_) {
+                                if (_completed) return;
+                                _dragStateNotifier.value = true;
+                              },
+                              onHorizontalDragUpdate: (details) {
+                                if (_completed) return;
+                                double newOffset =
+                                    _dragNotifier.value + details.delta.dx;
+                                if (newOffset < 0) newOffset = 0;
+
+                                // Auto-trigger the moment it hits the end!
+                                if (newOffset >= maxDrag) {
+                                  newOffset = maxDrag;
+                                  _completed = true;
+                                  _dragStateNotifier.value = false;
+                                  _dragNotifier.value = newOffset;
+                                  Future.delayed(
+                                      const Duration(milliseconds: 200),
+                                      widget.onSwipe);
+                                  return;
+                                }
+                                _dragNotifier.value = newOffset;
+                              },
+                              onHorizontalDragEnd: (details) {
+                                if (_completed) return;
+                                _dragStateNotifier.value = false;
+                                if (_dragNotifier.value > maxDrag * 0.7) {
+                                  _completed = true;
+                                  _dragNotifier.value = maxDrag;
+                                  Future.delayed(
+                                      const Duration(milliseconds: 300),
+                                      widget.onSwipe);
+                                } else {
+                                  _dragNotifier.value = 0; // Snap back
+                                }
+                              },
+                              child: Container(
+                                width: _thumbSize,
+                                height: _thumbSize,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  color: Colors.white, // Ensure solid background
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                          alpha: isDragging ? 0.4 : 0.2),
+                                      blurRadius: isDragging ? 12 : 8,
+                                      offset: const Offset(0, 4), // Stays static!
+                                    )
+                                  ],
+                                ),
+                                // Rotate ONLY the image, so the shadow stays locked downward
+                                child: Transform.rotate(
+                                  angle: value / 20,
+                                  child: Image.asset(
+                                    'assets/icons/ic_cricket_ball_icon.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
