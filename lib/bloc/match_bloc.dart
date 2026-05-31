@@ -34,6 +34,14 @@ class PerformToss extends MatchEvent {
 
 class ResetMatch extends MatchEvent {}
 
+/// Reconstructs MatchBloc state from a persisted MatchSummary (used when resuming a session after app restart).
+class RestoreMatch extends MatchEvent {
+  final MatchSummary match;
+  RestoreMatch(this.match);
+  @override
+  List<Object?> get props => [match.id];
+}
+
 // State
 enum MatchStatus { setup, teamsSelected, tossDone, inProgress, finished }
 
@@ -129,6 +137,22 @@ class MatchBloc extends Bloc<MatchEvent, MatchState> {
 
     on<ResetMatch>((event, emit) {
       emit(const MatchState());
+    });
+
+    on<RestoreMatch>((event, emit) {
+      final m = event.match;
+      emit(MatchState(
+        matchId: m.id,
+        settings: MatchSettings(
+          totalOvers: m.totalOvers,
+          teamAName: m.teamAName,
+          teamBName: m.teamBName,
+          groupId: m.groupId,
+        ),
+        teamA: m.teamA,
+        teamB: m.teamB,
+        status: MatchStatus.inProgress,
+      ));
     });
   }
 

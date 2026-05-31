@@ -67,6 +67,15 @@ class UndoBall extends ScoreEvent {}
 
 class ResetScoreboard extends ScoreEvent {}
 
+/// Restores a previously-saved ScoreState (e.g. after the app is killed and relaunched).
+class RestoreScore extends ScoreEvent {
+  final ScoreState savedState;
+  final String matchId;
+  RestoreScore({required this.savedState, required this.matchId});
+  @override
+  List<Object?> get props => [matchId];
+}
+
 class SwapStriker extends ScoreEvent {}
 
 class RetirePlayer extends ScoreEvent {
@@ -235,6 +244,11 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
       emit(const ScoreState());
     });
 
+    on<RestoreScore>((event, emit) {
+      activeMatchId = event.matchId;
+      emit(event.savedState);
+    });
+
     on<StartInnings>((event, emit) {
       final newInnings = Innings(
         battingTeamName: event.battingTeamName,
@@ -242,8 +256,9 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         battingPlayers: event.battingLineup,
         bowlingPlayers: event.bowlingLineup,
       );
+      final ScoreState next;
       if (event.target == 0) {
-        emit(ScoreState(
+        next = ScoreState(
           firstInnings: newInnings,
           isFirstInnings: true,
           strikerId: event.strikerId,
@@ -252,9 +267,9 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
           battingLineup: event.battingLineup,
           bowlingLineup: event.bowlingLineup,
           isLastManStanding: event.nonStrikerId.isEmpty,
-        ));
+        );
       } else {
-        emit(state.copyWith(
+        next = state.copyWith(
           secondInnings: newInnings,
           isFirstInnings: false,
           strikerId: event.strikerId,
@@ -266,8 +281,10 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
           retiredHurtIds: [],
           isLastManStanding: event.nonStrikerId.isEmpty,
           pendingBowlerChange: false,
-        ));
+        );
       }
+      emit(next);
+      _pushLiveScore(next);
     });
 
     on<RecordBall>((event, emit) {
@@ -392,36 +409,45 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         newRetiredIds.remove(event.playerId);
       }
 
+      final ScoreState next;
       if (event.isStriker) {
-        emit(state.copyWith(
-          strikerId: event.playerId, 
+        next = state.copyWith(
+          strikerId: event.playerId,
           retiredHurtIds: newRetiredIds,
           isLastManStanding: state.nonStrikerId.isEmpty,
-        ));
+        );
       } else {
-        emit(state.copyWith(
-          nonStrikerId: event.playerId, 
+        next = state.copyWith(
+          nonStrikerId: event.playerId,
           retiredHurtIds: newRetiredIds,
           isLastManStanding: false,
-        ));
+        );
       }
+      emit(next);
+      _pushLiveScore(next);
     });
 
     on<ChangeBowler>((event, emit) {
-      emit(state.copyWith(bowlerId: event.newBowlerId, pendingBowlerChange: false));
+      final next = state.copyWith(bowlerId: event.newBowlerId, pendingBowlerChange: false);
+      emit(next);
+      _pushLiveScore(next);
     });
 
     on<UndoBall>((event, emit) {
       if (state.history.isNotEmpty) {
         final previous = state.history.last;
         final updatedHistory = List<ScoreState>.from(state.history)..removeLast();
-        emit(previous.copyWith(history: updatedHistory));
+        final undoneState = previous.copyWith(history: updatedHistory);
+        emit(undoneState);
+        _pushLiveScore(undoneState);
       }
     });
 
     on<SwapStriker>((event, emit) {
       if (state.isLastManStanding || state.strikerId.isEmpty || state.nonStrikerId.isEmpty) return;
-      emit(state.copyWith(strikerId: state.nonStrikerId, nonStrikerId: state.strikerId));
+      final swapped = state.copyWith(strikerId: state.nonStrikerId, nonStrikerId: state.strikerId);
+      emit(swapped);
+      _pushLiveScore(swapped);
     });
 
     on<RetirePlayer>((event, emit) {
@@ -471,4 +497,9 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
     });
   }
 
+  void _pushLiveScore(ScoreState s) {
+    if (activeMatchId != null) {
+      _repo.upsertLiveScore(activeMatchId!, s.toJson()).ignore();
+    }
+  }
 }

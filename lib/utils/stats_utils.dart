@@ -21,6 +21,8 @@ class PlayerStats {
   int fours = 0;
   int sixes = 0;
   int fifties = 0;
+  int hundreds = 0;
+  int highestScore = 0;
   List<int> recentBattingInnings = []; // Stores runs for recent form
 
   // Bowling details
@@ -28,6 +30,8 @@ class PlayerStats {
   int runsConceded = 0;
   int ballsBowled = 0;
   int dotBalls = 0;
+  int? bestBowlingWickets;
+  int? bestBowlingRuns;
   List<int> recentBowlingInnings = []; // Stores wickets for recent form
 
   // Fielding details (Optional)
@@ -52,6 +56,8 @@ class PlayerStats {
   double get economy => ballsBowled > 0 ? (runsConceded / (ballsBowled / 6.0)) : 0.0;
   double get wicketsPerMatch => matchesBowled > 0 ? wickets / matchesBowled : 0.0;
   double get dotBallPercent => ballsBowled > 0 ? (dotBalls / ballsBowled) * 100 : 0.0;
+  double? get bowlingAverage => wickets > 0 ? runsConceded / wickets : null;
+  int get notOuts => inningsBatted - dismissals;
 
   int get fieldingBonus {
     int bonus = (catches * 2) + (runOuts * 3);
@@ -213,7 +219,9 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
             p.inningsBatted++;
             p.recentBattingInnings.add(s.runs);
 
+            if (s.runs >= 100) p.hundreds++;
             if (s.runs >= 50) p.fifties++;
+            if (s.runs > p.highestScore) p.highestScore = s.runs;
 
             if (s.isOut && s.wicketType != 'Retired' && s.wicketType != 'Timed out') {
               p.dismissals++;
@@ -229,8 +237,17 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
             p.runsConceded += s.runsConceded;
             p.ballsBowled += s.ballsBowled;
             p.dotBalls += s.dotBalls;
-            p.matchesBowled++; // actually this should count per innings bowled in this match
+            p.matchesBowled++;
             p.recentBowlingInnings.add(s.wickets);
+
+            if (s.wickets > 0) {
+              if (p.bestBowlingWickets == null ||
+                  s.wickets > p.bestBowlingWickets! ||
+                  (s.wickets == p.bestBowlingWickets && s.runsConceded < p.bestBowlingRuns!)) {
+                p.bestBowlingWickets = s.wickets;
+                p.bestBowlingRuns = s.runsConceded;
+              }
+            }
           }
         });
         
@@ -238,8 +255,8 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
         inn.batsmanStats.forEach((id, s) {
            if (s.isOut && s.outFielderId != null && stats.containsKey(s.outFielderId)) {
                final f = stats[s.outFielderId]!;
-               if (s.wicketType == 'Run Out') f.runOuts++;
-               else if (s.wicketType == 'Caught') f.catches++;
+               if (s.wicketType == 'Run Out') { f.runOuts++; }
+               else if (s.wicketType == 'Caught') { f.catches++; }
            }
         });
       }

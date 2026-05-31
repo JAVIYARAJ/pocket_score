@@ -761,6 +761,34 @@ class _LiveBannerState extends State<_LiveBanner> {
     });
   }
 
+  void _resumeScoring(BuildContext context) {
+    final match = widget.match;
+
+    // Prefer the freshest score data: live_scores row (already in _scoreData)
+    // falling back to the matches.score_data column stored in MatchSummary.
+    final rawScore = _scoreData ?? match.scoreData;
+    if (rawScore == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No saved scoring data found for this match.')),
+      );
+      return;
+    }
+
+    try {
+      final savedScore = ScoreState.fromJson(rawScore);
+      // Restore both blocs — _MainShell will automatically overlay ScoringScreen
+      // as soon as ScoreBloc.state.firstInnings != null.
+      context.read<MatchBloc>().add(RestoreMatch(match));
+      context.read<ScoreBloc>().add(
+        RestoreScore(savedState: savedScore, matchId: match.id),
+      );
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not restore match. Data may be corrupted.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ScoreState? score;
@@ -1083,9 +1111,7 @@ class _LiveBannerState extends State<_LiveBanner> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () {
-                            // Resume scoring (handled by ScoringScreen if match is active)
-                          },
+                          onTap: () => _resumeScoring(context),
                           child: Container(
                             height: 48,
                             decoration: BoxDecoration(
@@ -1207,26 +1233,30 @@ class _HomeBallChip extends StatelessWidget {
     final isNoBall = typeStr.contains('noball') ||
                      typeStr.contains('no_ball');
 
-    Color  bg; String label;
+    Color  bg; String label; Color fg = Colors.white;
     if (isWicket)      { bg = AppColors.danger;  label = 'W'; }
     else if (runs == 6){ bg = AppColors.success;  label = '6'; }
     else if (runs == 4){ bg = AppColors.info;     label = '4'; }
     else if (isWide)   { bg = AppColors.warning;  label = 'Wd'; }
-    else if (isNoBall) { bg = AppColors.accent;   label = 'Nb'; }
-    else if (runs == 0){ bg = Colors.white.withValues(alpha: 0.2); label = '·'; }
-    else               { bg = Colors.white.withValues(alpha: 0.25); label = '$runs'; }
+    else if (isNoBall) { bg = AppColors.accent;   label = runs > 0 ? 'Nb+$runs' : 'Nb'; }
+    else if (runs == 0){ bg = Colors.white.withValues(alpha: 0.15); label = '·'; }
+    else               { bg = Colors.white.withValues(alpha: 0.2); label = '$runs'; }
 
+    final bool isSolid = isWicket || runs == 6 || runs == 4 || isWide || isNoBall;
     return Container(
       margin: const EdgeInsets.only(right: 5),
       width: 28, height: 28,
       decoration: BoxDecoration(
-        color: bg.withValues(alpha: 0.85),
+        color: isSolid ? bg.withValues(alpha: 0.9) : bg,
         borderRadius: BorderRadius.circular(6),
+        border: isSolid
+            ? null
+            : Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1),
       ),
       alignment: Alignment.center,
       child: Text(label,
-          style: const TextStyle(
-              color: Colors.white,
+          style: TextStyle(
+              color: fg,
               fontWeight: FontWeight.w900,
               fontSize: 10)),
     );

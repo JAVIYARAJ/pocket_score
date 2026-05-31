@@ -8,6 +8,12 @@ import '../theme/app_theme.dart';
 import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
 
+class _CelebrationData {
+  final String text;
+  final Color color;
+  _CelebrationData({required this.text, required this.color});
+}
+
 /// Spectator screen — subscribes to a live match via Supabase Realtime.
 /// Anyone who has the match ID can open this screen to watch the score update
 /// in real-time without being the scorer.
@@ -39,6 +45,8 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
   String? _error;
   RealtimeChannel? _channel;
 
+  final ValueNotifier<_CelebrationData?> _celebration = ValueNotifier(null);
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +58,7 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
   @override
   void dispose() {
     _channel?.unsubscribe();
+    _celebration.dispose();
     super.dispose();
   }
 
@@ -58,6 +67,7 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
     try {
       final data = await _repo.getLiveScore(widget.matchId);
       if (!mounted) return;
+      _checkCelebration(_scoreData, data);
       setState(() {
         _scoreData = data;
         _loading   = false;
@@ -68,6 +78,26 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
       if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });
     }
+  }
+
+  void _checkCelebration(Map<String, dynamic>? oldData, Map<String, dynamic>? newData) {
+    if (oldData == null || newData == null || _loading) return;
+    try {
+      final oldScore = ScoreState.fromJson(oldData);
+      final newScore = ScoreState.fromJson(newData);
+      final oldBalls = oldScore.currentInnings?.balls ?? [];
+      final newBalls = newScore.currentInnings?.balls ?? [];
+      if (newBalls.length > oldBalls.length) {
+        final b = newBalls.last;
+        if (b.isWicket == true) {
+          _celebration.value = _CelebrationData(text: 'OUT! 🎯', color: AppColors.wicket);
+        } else if ((b.runs as int?) == 6) {
+          _celebration.value = _CelebrationData(text: 'SIX! 🚀', color: AppColors.six);
+        } else if ((b.runs as int?) == 4) {
+          _celebration.value = _CelebrationData(text: 'FOUR! 💥', color: AppColors.four);
+        }
+      }
+    } catch (_) {}
   }
 
   // ── Realtime channel — no raw table query ─────────────────────────────────
@@ -114,10 +144,25 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
       ),
       child: Scaffold(
         backgroundColor: AppColors.bg,
-        body: Column(
+        body: Stack(
           children: [
-            _buildHeader(context),
-            Expanded(child: body),
+            Column(
+              children: [
+                _buildHeader(context),
+                Expanded(child: body),
+              ],
+            ),
+            ValueListenableBuilder<_CelebrationData?>(
+              valueListenable: _celebration,
+              builder: (context, data, _) {
+                if (data == null) return const SizedBox.shrink();
+                return ScoreCelebration(
+                  text: data.text,
+                  color: data.color,
+                  onFinish: () => _celebration.value = null,
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -207,6 +252,24 @@ class _LiveBody extends StatelessWidget {
     return (runs: runs, balls: balls);
   }
 
+  // Last dismissed batsman — name, runs, balls faced
+  ({String name, int runs, int balls})? _lastWicket(dynamic innings) {
+    final allBalls = innings.balls as List;
+    for (final b in allBalls.reversed) {
+      if (b.isWicket != true) continue;
+      final pid   = b.strikerId as String;
+      final stats = (innings.batsmanStats as Map)[pid];
+      final name  = _name(innings.battingPlayers as List, pid);
+      if (name == '—' || stats == null) return null;
+      return (
+        name: name,
+        runs: (stats.runs  as int?) ?? 0,
+        balls: (stats.ballsFaced as int?) ?? 0,
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final innings = score.currentInnings;
@@ -230,6 +293,7 @@ class _LiveBody extends StatelessWidget {
         : 0.0;
 
     final partnership = _partnership(innings);
+    final lastWkt     = _lastWicket(innings);
     final thisOver    = _thisOverBalls(innings);
     final recent      = (innings.balls as List).length > 12
         ? (innings.balls as List).sublist((innings.balls as List).length - 12)
@@ -405,24 +469,50 @@ class _LiveBody extends StatelessWidget {
                     isStriker: false,
                   ),
                 ],
-                // Partnership
-                if (partnership.balls > 0) ...[
+                // Partnership + Last Wicket footer
+                if (partnership.balls > 0 || lastWkt != null) ...[
                   const Divider(height: 1, color: AppColors.border),
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    child: Row(children: [
-                      const Icon(Icons.handshake_rounded,
-                          size: 13, color: AppColors.textMuted),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Partnership  ${partnership.runs} (${partnership.balls})',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                            fontWeight: FontWeight.w600),
-                      ),
-                    ]),
+                        horizontal: 14, vertical: 9),
+                    child: Row(
+                      children: [
+                        if (partnership.balls > 0) ...[
+                          const Icon(Icons.handshake_rounded,
+                              size: 12, color: AppColors.primary),
+                          const SizedBox(width: 5),
+                          Text(
+                            "P'ship : ${partnership.runs}(${partnership.balls})",
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                        if (partnership.balls > 0 && lastWkt != null)
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            width: 1,
+                            height: 14,
+                            color: AppColors.border,
+                          ),
+                        if (lastWkt != null) ...[
+                          const Icon(Icons.sports_cricket_rounded,
+                              size: 12, color: AppColors.danger),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'Last: ${lastWkt.name} ${lastWkt.runs}(${lastWkt.balls})',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.danger,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
               ],
@@ -439,7 +529,29 @@ class _LiveBody extends StatelessWidget {
             child: Column(
               children: [
                 _bowlerHeader(),
-                if (score.bowlerId.isNotEmpty && bowler != null) ...[
+                if (score.pendingBowlerChange) ...[
+                  const Divider(height: 1, color: AppColors.border),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    child: Row(children: [
+                      PulseAnimation(
+                        child: Container(
+                          width: 8, height: 8,
+                          decoration: const BoxDecoration(
+                              color: AppColors.warning, shape: BoxShape.circle),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Awaiting bowler selection…',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.warning),
+                      ),
+                    ]),
+                  ),
+                ] else if (score.bowlerId.isNotEmpty && bowler != null) ...[
                   const Divider(height: 1, color: AppColors.border),
                   _bowlerRow(
                     name  : _name(bowlPlayers, score.bowlerId),
@@ -571,15 +683,18 @@ class _LiveBody extends StatelessWidget {
       child: Row(children: [
         Expanded(
           child: Row(children: [
-            Text(
-              name,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight:
-                      isStriker ? FontWeight.w800 : FontWeight.w600,
-                  color: isStriker
-                      ? AppColors.textPrimary
-                      : AppColors.textSecondary),
+            Flexible(
+              child: Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight:
+                        isStriker ? FontWeight.w800 : FontWeight.w600,
+                    color: isStriker
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary),
+              ),
             ),
             if (isStriker) ...[
               const SizedBox(width: 4),
@@ -745,7 +860,7 @@ class _BallChip extends StatelessWidget {
     } else if (isNoBall) {
       bg = AppColors.accent.withValues(alpha: 0.15);
       fg = AppColors.accent;
-      label = extraR > 0 ? 'Nb+$extraR' : 'Nb';
+      label = runs > 0 ? 'Nb+$runs' : 'Nb';
     } else if (runs == 0) {
       bg = AppColors.bg;
       fg = AppColors.textMuted;

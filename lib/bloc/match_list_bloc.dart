@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/match_models.dart';
 import '../services/match_repository.dart';
 
@@ -33,6 +34,9 @@ class RemoveMatchFromList extends MatchListEvent {
 /// Fired once after sign-in to pull all matches from Supabase.
 class SyncMatchesFromSupabase extends MatchListEvent {}
 
+/// Internal — fired by the Realtime subscription to refresh the list quietly.
+class _RefreshMatchList extends MatchListEvent {}
+
 // ── State ───────────────────────────────────────────────────────
 class MatchListState extends Equatable {
   final List<MatchSummary> matches;
@@ -56,10 +60,20 @@ class MatchListState extends Equatable {
 // ── Bloc ────────────────────────────────────────────────────────
 class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
   final MatchRepository _repo;
+  RealtimeChannel? _channel;
 
   MatchListBloc(this._repo) : super(const MatchListState()) {
     // ── Sync from Supabase on sign-in ────────────────────
     on<SyncMatchesFromSupabase>((event, emit) async {
+      try {
+        final matches = await _repo.getAll();
+        emit(MatchListState(matches: matches));
+        _startRealtimeSync(); // watch for status changes from other devices
+      } catch (_) {}
+    });
+
+    // ── Silent refresh triggered by Realtime ─────────────
+    on<_RefreshMatchList>((event, emit) async {
       try {
         final matches = await _repo.getAll();
         emit(MatchListState(matches: matches));
@@ -96,4 +110,22 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
     });
   }
 
+  void _startRealtimeSync() {
+    if (_channel != null) return; // already subscribed
+    _channel = Supabase.instance.client
+        .channel('match_list_realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'matches',
+          callback: (_) => add(_RefreshMatchList()),
+        )
+        .subscribe();
+  }
+
+  @override
+  Future<void> close() {
+    _channel?.unsubscribe();
+    return super.close();
+  }
 }

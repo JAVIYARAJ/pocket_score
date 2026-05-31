@@ -223,6 +223,138 @@ class ScoringScreen extends StatelessWidget {
       ),
     );
   }
+  static void _confirmEndGame(BuildContext context, ScoreState state) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+        contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                shape: BoxShape.circle),
+            child: const Icon(Icons.flag_rounded,
+                color: AppColors.warning, size: 22),
+          ),
+          const SizedBox(width: 12),
+          const Text('End Game?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        ]),
+        content: const Text(
+          'This will record the current score as the final result and close the match.',
+          style: TextStyle(
+              color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  side: const BorderSide(color: AppColors.border),
+                  foregroundColor: AppColors.textSecondary,
+                ),
+                child: const Text('Keep Playing',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _forceCompleteMatch(context, state);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('End Game',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 13)),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  static void _forceCompleteMatch(BuildContext context, ScoreState state) {
+    final ms = context.read<MatchBloc>().state;
+    if (ms.matchId == null) return;
+
+    final first  = state.firstInnings;
+    final second = state.secondInnings;
+    final aName  = ms.settings?.teamAName ?? '';
+    final bName  = ms.settings?.teamBName ?? '';
+
+    int? aScore, aWkts, bScore, bWkts;
+    String? aOv, bOv;
+    if (first != null) {
+      if (first.battingTeamName == aName) {
+        aScore = first.totalRuns; aWkts = first.totalWickets; aOv = first.overDisplay;
+      } else {
+        bScore = first.totalRuns; bWkts = first.totalWickets; bOv = first.overDisplay;
+      }
+    }
+    if (second != null) {
+      if (second.battingTeamName == aName) {
+        aScore = second.totalRuns; aWkts = second.totalWickets; aOv = second.overDisplay;
+      } else {
+        bScore = second.totalRuns; bWkts = second.totalWickets; bOv = second.overDisplay;
+      }
+    }
+
+    String result = 'Match ended';
+    if (first != null && second != null) {
+      if (second.totalRuns > first.totalRuns) {
+        result = '${second.battingTeamName} won';
+      } else if (first.totalRuns > second.totalRuns) {
+        result = '${first.battingTeamName} won';
+      } else {
+        result = 'Match Tied';
+      }
+    } else if (first != null) {
+      result = '${first.battingTeamName} innings complete';
+    }
+
+    context.read<MatchListBloc>().add(UpdateMatchInList(MatchSummary(
+      id          : ms.matchId!,
+      teamAName   : aName,
+      teamBName   : bName,
+      teamA       : ms.teamA,
+      teamB       : ms.teamB,
+      totalOvers  : ms.settings?.totalOvers ?? 0,
+      status      : 'completed',
+      createdAt   : DateTime.now(),
+      teamAScore  : aScore,
+      teamAWickets: aWkts,
+      teamAOvers  : aOv,
+      teamBScore  : bScore,
+      teamBWickets: bWkts,
+      teamBOvers  : bOv,
+      scoreData   : state.toJson(),
+      groupId     : ms.settings?.groupId,
+      result      : result,
+    )));
+
+    context.push('/match/result');
+  }
 }
 
 // ── Scoring View ───────────────────────────────────────────────
@@ -263,11 +395,7 @@ class _ScoringViewState extends State<_ScoringView> {
     final newBalls = widget.state.currentInnings?.balls ?? [];
     final oldBalls = old.state.currentInnings?.balls ?? [];
     if (newBalls.length > oldBalls.length) {
-      final b = newBalls.last;
       _checkMilestone(old.state, widget.state);
-      if (b.isWicket) _celebrate('OUT! 🎯', AppColors.wicket);
-      else if (b.runs == 6) _celebrate('SIX! 🚀', AppColors.six);
-      else if (b.runs == 4) _celebrate('FOUR! 💥', AppColors.four);
     }
   }
 
@@ -413,6 +541,14 @@ class _ScoringAppBar extends StatelessWidget {
           color: AppColors.primary,
           bg: AppColors.primary.withValues(alpha: 0.1),
           onTap: () => context.push('/scorecard', extra: state),
+        ),
+        const SizedBox(width: 8),
+        // End Game
+        _iconBtn(
+          icon: Icons.flag_rounded,
+          color: AppColors.warning,
+          bg: AppColors.warning.withValues(alpha: 0.1),
+          onTap: () => ScoringScreen._confirmEndGame(context, state),
         ),
         const SizedBox(width: 8),
         // Delete
@@ -1063,7 +1199,7 @@ class _ThisOver extends StatelessWidget {
     String label;
     if (b.isWicket) { label = 'W'; color = AppColors.wicket; }
     else if (b.type == BallType.wide) { label = 'WD'; color = AppColors.wide; }
-    else if (b.type == BallType.noBall) { label = 'NB'; color = AppColors.noBall; }
+    else if (b.type == BallType.noBall) { label = b.runs > 0 ? 'Nb+${b.runs}' : 'NB'; color = AppColors.noBall; }
     else if (b.runs == 6) { label = '6'; color = AppColors.six; }
     else if (b.runs == 4) { label = '4'; color = AppColors.four; }
     else if (b.runs == 0) { label = '•'; color = AppColors.dot; }
@@ -1207,7 +1343,7 @@ class _ActionPanel extends StatelessWidget {
         // Extras + Wicket
         Row(children: [
           _extrasBtn(context, 'WD', 0, BallType.wide, AppColors.wide),
-          _extrasBtn(context, 'NB', 0, BallType.noBall, AppColors.noBall),
+          _noBallBtn(context),
           const SizedBox(width: 8),
           Expanded(
             flex: 2,
@@ -1297,6 +1433,129 @@ class _ActionPanel extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: color)),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _noBallBtn(BuildContext context) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: GestureDetector(
+          onTap: () => _noBallSheet(context),
+          child: Container(
+            height: 58,
+            decoration: BoxDecoration(
+              color: AppColors.noBall.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.noBall.withValues(alpha: 0.3)),
+            ),
+            alignment: Alignment.center,
+            child: const Text('NB',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.noBall)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _noBallSheet(BuildContext context) {
+    final bloc = context.read<ScoreBloc>();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.noBall.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('NO BALL',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.noBall,
+                        letterSpacing: 1)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            const Text('How many runs off the bat?',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 6),
+            const Text(
+              '+1 penalty run is added automatically.',
+              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [0, 1, 2, 3, 4, 6].map((runs) {
+                Color bg, fg;
+                if (runs == 6) { bg = AppColors.six.withValues(alpha: 0.12); fg = AppColors.six; }
+                else if (runs == 4) { bg = AppColors.four.withValues(alpha: 0.12); fg = AppColors.four; }
+                else { bg = AppColors.surfaceLight; fg = AppColors.textSecondary; }
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: GestureDetector(
+                      onTap: () {
+                        bloc.add(RecordBall(
+                          runs: runs,
+                          type: BallType.noBall,
+                          extraRuns: 1,
+                        ));
+                        Navigator.pop(ctx);
+                      },
+                      child: Container(
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: fg.withValues(alpha: 0.3)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          runs == 0 ? 'Nb' : 'Nb+$runs',
+                          style: TextStyle(
+                              fontSize: runs == 0 ? 16 : 13,
+                              fontWeight: FontWeight.w800,
+                              color: fg),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         ),
       ),
     );
@@ -1394,6 +1653,7 @@ void _wicketDialog(BuildContext context, ScoreState state) {
   String? wktType;
   String? playerId = state.strikerId;
   int runs = 0;
+  bool runOutRunsConfirmed = false;
   String? fielderId;
   String? nextId;
 
@@ -1474,6 +1734,97 @@ void _wicketDialog(BuildContext context, ScoreState state) {
                           fontSize: 12,
                           fontWeight: FontWeight.w600)),
                 ],
+              ] else if (isRunOut && !runOutRunsConfirmed) ...[
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.run_circle_rounded,
+                        color: AppColors.warning, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('Run Out!',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                ]),
+                const SizedBox(height: 6),
+                const Text(
+                  'How many runs were completed before the run out?',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [0, 1, 2, 3].map((r) {
+                    final sel = runs == r;
+                    return Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        child: GestureDetector(
+                          onTap: () => setSt(() => runs = r),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? AppColors.warning.withValues(alpha: 0.12)
+                                  : AppColors.surfaceLight,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: sel ? AppColors.warning : AppColors.border,
+                                  width: sel ? 2 : 1),
+                            ),
+                            alignment: Alignment.center,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('$r',
+                                    style: TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                        color: sel
+                                            ? AppColors.warning
+                                            : AppColors.textSecondary)),
+                                const SizedBox(height: 2),
+                                Text(r == 1 ? 'run' : 'runs',
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: sel
+                                            ? AppColors.warning
+                                            : AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.warning,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    onPressed: () => setSt(() => runOutRunsConfirmed = true),
+                    child: Text(
+                      runs == 0
+                          ? 'No runs completed  →'
+                          : '$runs run${runs == 1 ? "" : "s"} completed  →',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
+                  ),
+                ),
               ] else if (needsFielder && fielderId == null) ...[
                 Text(
                   wktType == 'RUN OUT' ? 'Fielder Involved?' : 'Who Caught It?',
@@ -1501,9 +1852,26 @@ void _wicketDialog(BuildContext context, ScoreState state) {
                   child: const Text('By Bowler'),
                 ),
               ] else if (isRunOut && nextId == null && avail.isNotEmpty) ...[
-                const Text('Run Out Details',
-                    style: TextStyle(
-                        fontSize: 22, fontWeight: FontWeight.w800)),
+                // Runs already captured in step 1; now ask who's out and next batsman
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      runs == 0
+                          ? 'Run Out · 0 runs'
+                          : 'Run Out · $runs run${runs == 1 ? "" : "s"} completed',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.warning,
+                          letterSpacing: 0.5),
+                    ),
+                  ),
+                ]),
                 const SizedBox(height: 16),
                 const Text('WHO IS OUT?',
                     style: TextStyle(
@@ -1521,46 +1889,15 @@ void _wicketDialog(BuildContext context, ScoreState state) {
                       playerId,
                       (id) => setSt(() => playerId = id)),
                   const SizedBox(width: 10),
-                  _selBtn(
-                      state.battingLineup
-                          .firstWhere((p) => p.id == state.nonStrikerId)
-                          .name,
-                      state.nonStrikerId,
-                      playerId,
-                      (id) => setSt(() => playerId = id)),
+                  if (state.nonStrikerId.isNotEmpty)
+                    _selBtn(
+                        state.battingLineup
+                            .firstWhere((p) => p.id == state.nonStrikerId)
+                            .name,
+                        state.nonStrikerId,
+                        playerId,
+                        (id) => setSt(() => playerId = id)),
                 ]),
-                const SizedBox(height: 16),
-                const Text('RUNS COMPLETED?',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textMuted,
-                        letterSpacing: 1)),
-                const SizedBox(height: 8),
-                Row(children: [0, 1, 2, 3].map((r) => GestureDetector(
-                  onTap: () => setSt(() => runs = r),
-                  child: Container(
-                    width: 50, height: 50,
-                    margin: const EdgeInsets.only(right: 10),
-                    decoration: BoxDecoration(
-                      color: runs == r
-                          ? AppColors.primary
-                          : AppColors.surfaceLight,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: runs == r
-                              ? AppColors.primary
-                              : AppColors.border),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text('$r',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: runs == r
-                                ? Colors.white
-                                : AppColors.textSecondary)),
-                  ),
-                )).toList()),
                 const SizedBox(height: 20),
                 const Text('NEXT BATSMAN',
                     style: TextStyle(
@@ -1615,6 +1952,12 @@ void _wicketDialog(BuildContext context, ScoreState state) {
                         style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: AppColors.textSecondary)),
+                    if (isRunOut)
+                      Text(
+                          'Runs before out: $runs',
+                          style: const TextStyle(
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.w600)),
                     if (nextId != null && avail.any((p) => p.id == nextId))
                       Text(
                           'Next: ${avail.firstWhere((p) => p.id == nextId).name}',

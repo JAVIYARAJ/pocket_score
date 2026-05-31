@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../bloc/score_bloc.dart';
 import '../models/ball_model.dart';
 import '../models/innings_model.dart';
+import '../models/player_model.dart';
 import '../theme/app_theme.dart';
 import '../utils/stats_utils.dart';
 
@@ -114,9 +116,12 @@ class ScorecardView extends StatelessWidget {
             children: [
               _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'SR'], flexes: [5, 1, 1, 1, 1, 2]),
               ...bats.entries.map((e) {
-                final name = _findName(inn, e.key);
+                final player = _findPlayer(inn, e.key);
+                final name = player != null
+                    ? (player.isGuest ? '${player.name} (Guest)' : player.name)
+                    : _findName(inn, e.key);
                 final s = e.value;
-                return _batRow(inn, name, s);
+                return _batRow(context, inn, name, s, player: player);
               }),
             ],
           ),
@@ -150,12 +155,12 @@ class ScorecardView extends StatelessWidget {
             children: [
               _headerRow(['Bowler', 'O', 'R', 'W', 'Eco', 'Ext'], flexes: [5, 2, 1, 1, 2, 3]),
               ...bowls.entries.map((e) {
-                final name = _findName(inn, e.key);
+                final player = _findPlayer(inn, e.key);
+                final name = player != null
+                    ? (player.isGuest ? '${player.name} (Guest)' : player.name)
+                    : _findName(inn, e.key);
                 final s = e.value;
-                return _dataRow(
-                  [name, s.oversBowled, '${s.runsConceded}', '${s.wickets}', s.economy.toStringAsFixed(1), '${s.wides}wd ${s.noBalls}nb'],
-                  flexes: [5, 2, 1, 1, 2, 3],
-                );
+                return _bowlRow(context, name, s, player: player);
               }),
             ],
           ),
@@ -211,57 +216,118 @@ class ScorecardView extends StatelessWidget {
     );
   }
 
-  Widget _batRow(Innings inn, String name, BatsmanStats s) {
-    bool isNotOut = !s.isOut;
+  Widget _batRow(BuildContext context, Innings inn, String name, BatsmanStats s, {Player? player}) {
+    final isNotOut = !s.isOut;
+    final canTap = player != null && !player.isGuest && player.userId != null;
     final otherVals = ['${s.runs}', '${s.ballsFaced}', '${s.fours}', '${s.sixes}', s.strikeRate.toStringAsFixed(1)];
     final otherFlexes = [1, 1, 1, 1, 2];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: isNotOut ? AppColors.accent.withValues(alpha: 0.04) : null,
-        border: const Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 5,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${isNotOut ? "* " : ""}$name',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isNotOut ? AppColors.accent : AppColors.textPrimary),
+    return InkWell(
+      onTap: canTap
+          ? () => context.push('/player/${player.userId}', extra: {'displayName': player.name})
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isNotOut ? AppColors.accent.withValues(alpha: 0.04) : null,
+          border: const Border(bottom: BorderSide(color: AppColors.border)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '${isNotOut ? "* " : ""}$name',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isNotOut ? AppColors.accent : AppColors.textPrimary),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (canTap) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.open_in_new_rounded,
+                            size: 11, color: AppColors.textMuted),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _getDismissalInfo(inn, s),
+                    style: const TextStyle(
+                        fontSize: 9.5,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w500),
+                    maxLines: 2,
+                    softWrap: true,
+                  ),
+                ],
+              ),
+            ),
+            ...List.generate(otherVals.length, (index) {
+              return Expanded(
+                flex: otherFlexes[index],
+                child: Text(
+                  otherVals[index],
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  textAlign: TextAlign.start,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _getDismissalInfo(inn, s),
-                  style: const TextStyle(
-                      fontSize: 9.5,
-                      color: AppColors.textMuted,
-                      fontWeight: FontWeight.w500),
-                  maxLines: 2,
-                  softWrap: true,
-                ),
-              ],
-            ),
-          ),
-          ...List.generate(otherVals.length, (index) {
-            return Expanded(
-              flex: otherFlexes[index],
-              child: Text(
-                otherVals[index],
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                textAlign: TextAlign.start,
-                overflow: TextOverflow.ellipsis,
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bowlRow(BuildContext context, String name, BowlerStats s, {Player? player}) {
+    final canTap = player != null && !player.isGuest && player.userId != null;
+    return InkWell(
+      onTap: canTap
+          ? () => context.push('/player/${player.userId}', extra: {'displayName': player.name})
+          : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.border)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (canTap) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.open_in_new_rounded,
+                        size: 11, color: AppColors.textMuted),
+                  ],
+                ],
               ),
-            );
-          }),
-        ],
+            ),
+            Expanded(flex: 2, child: Text(s.oversBowled, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+            Expanded(flex: 1, child: Text('${s.runsConceded}', style: const TextStyle(fontSize: 12))),
+            Expanded(flex: 1, child: Text('${s.wickets}', style: const TextStyle(fontSize: 12))),
+            Expanded(flex: 2, child: Text(s.economy.toStringAsFixed(1), style: const TextStyle(fontSize: 12))),
+            Expanded(flex: 3, child: Text('${s.wides}wd ${s.noBalls}nb', style: const TextStyle(fontSize: 12, color: AppColors.textMuted))),
+          ],
+        ),
       ),
     );
   }
@@ -292,6 +358,17 @@ class ScorecardView extends StatelessWidget {
       return p.isGuest ? '${p.name} (Guest)' : p.name;
     } catch (_) {
       return '—';
+    }
+  }
+
+  Player? _findPlayer(Innings inn, String id) {
+    try {
+      return inn.battingPlayers.firstWhere((p) => p.id == id);
+    } catch (_) {}
+    try {
+      return inn.bowlingPlayers.firstWhere((p) => p.id == id);
+    } catch (_) {
+      return null;
     }
   }
 
