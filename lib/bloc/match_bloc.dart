@@ -144,10 +144,11 @@ class MatchBloc extends Bloc<MatchEvent, MatchState> {
       emit(MatchState(
         matchId: m.id,
         settings: MatchSettings(
-          totalOvers: m.totalOvers,
-          teamAName: m.teamAName,
-          teamBName: m.teamBName,
-          groupId: m.groupId,
+          totalOvers        : m.totalOvers,
+          teamAName         : m.teamAName,
+          teamBName         : m.teamBName,
+          groupId           : m.groupId,
+          maxOversPerBowler : m.maxOversPerBowler,
         ),
         teamA: m.teamA,
         teamB: m.teamB,

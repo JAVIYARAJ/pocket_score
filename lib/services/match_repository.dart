@@ -215,7 +215,8 @@ class MatchRepository {
     teamBOvers   : r['team_b_overs'] as String?,
     createdAt    : DateTime.parse(r['created_at'] as String),
     scoreData    : r['score_data'] != null ? Map<String, dynamic>.from(r['score_data'] as Map) : null,
-    groupId      : r['group_id'] as String?,
+    groupId           : r['group_id'] as String?,
+    maxOversPerBowler : r['max_overs_per_bowler'] as int?,
   );
 
   Map<String, dynamic> _toJson(MatchSummary m) => {
@@ -234,6 +235,7 @@ class MatchRepository {
     'team_b_wickets' : m.teamBWickets,
     'team_b_overs'   : m.teamBOvers,
     'score_data'     : m.scoreData,
-    'group_id'       : m.groupId,
+    'group_id'            : m.groupId,
+    'max_overs_per_bowler': m.maxOversPerBowler,
   };
 }

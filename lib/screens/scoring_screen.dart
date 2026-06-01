@@ -1658,8 +1658,14 @@ class _BowlerPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bowlers =
-        state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
+    final bowlers   = state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
+    final maxOv     = context.read<MatchBloc>().state.settings?.maxOversPerBowler;
+    final bowlStats = state.currentInnings?.bowlerStatsMap ?? {};
+
+    // If every candidate has hit the limit, allow override so the game can continue
+    final allAtLimit = maxOv != null && bowlers.every(
+        (p) => (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6 >= maxOv);
+
     return Container(
       padding: EdgeInsets.fromLTRB(
           20, 24, 20, MediaQuery.of(context).padding.bottom + 24),
@@ -1692,38 +1698,91 @@ class _BowlerPicker extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary)),
         ),
+
+        // All-at-limit override warning
+        if (allAtLimit) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'All bowlers have reached the $maxOv-over limit. Override to continue.',
+                  style: const TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ]),
+          ),
+        ],
+
         const SizedBox(height: 16),
         SizedBox(
-          height: 90,
+          height: 100,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: bowlers.length,
             itemBuilder: (ctx, i) {
-              final p = bowlers[i];
+              final p         = bowlers[i];
+              final oversUsed = (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6;
+              final atLimit   = maxOv != null && oversUsed >= maxOv && !allAtLimit;
+
               return GestureDetector(
-                onTap: () =>
-                    context.read<ScoreBloc>().add(ChangeBowler(p.id)),
-                child: Container(
-                  width: 80,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: AppDecorations.card(radius: 14),
-                  child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                      child: Text(p.name[0],
-                          style: const TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w800)),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(p.isGuest ? '${p.name} (Guest)' : p.name,
-                        style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w600),
-                        overflow: TextOverflow.ellipsis),
-                  ]),
+                onTap: atLimit
+                    ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(
+                            '${p.name} has bowled $oversUsed/$maxOv overs — limit reached',
+                          ),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ));
+                      }
+                    : () => context.read<ScoreBloc>().add(ChangeBowler(p.id)),
+                child: Opacity(
+                  opacity: atLimit ? 0.42 : 1.0,
+                  child: Container(
+                    width: 80,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: AppDecorations.card(radius: 14),
+                    child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: atLimit
+                            ? AppColors.danger.withValues(alpha: 0.1)
+                            : AppColors.primary.withValues(alpha: 0.1),
+                        child: Text(p.name[0],
+                            style: TextStyle(
+                                color: atLimit ? AppColors.danger : AppColors.primary,
+                                fontWeight: FontWeight.w800)),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(p.isGuest ? '${p.name} (Guest)' : p.name,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center),
+                      if (maxOv != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '$oversUsed/$maxOv ov',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: atLimit ? AppColors.danger : AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ]),
+                  ),
                 ),
               );
             },

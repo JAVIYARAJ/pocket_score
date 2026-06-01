@@ -205,3 +205,7 @@ CREATE POLICY "group_members_delete_own" ON public.group_members FOR DELETE USIN
 ALTER TABLE public.matches
   ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES public.groups(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS matches_group_id_idx ON public.matches (group_id);
+
+-- ── 10. Max Overs Per Bowler (added 2026-06) ────────────────
+ALTER TABLE public.matches
+  ADD COLUMN IF NOT EXISTS max_overs_per_bowler INTEGER;

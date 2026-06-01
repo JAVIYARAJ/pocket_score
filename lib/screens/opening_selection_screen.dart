@@ -100,15 +100,16 @@ class _OpeningSelectionScreenState extends State<OpeningSelectionScreen> {
 
     // 1. Create the match record in the database for the first time.
     context.read<MatchListBloc>().add(AddMatchToList(MatchSummary(
-      id         : matchId,
-      teamAName  : ms.settings!.teamAName,
-      teamBName  : ms.settings!.teamBName,
-      teamA      : ms.teamA,
-      teamB      : ms.teamB,
-      totalOvers : ms.settings!.totalOvers,
-      status     : 'in_progress',
-      createdAt  : DateTime.now(),
-      groupId    : ms.settings?.groupId,
+      id                : matchId,
+      teamAName         : ms.settings!.teamAName,
+      teamBName         : ms.settings!.teamBName,
+      teamA             : ms.teamA,
+      teamB             : ms.teamB,
+      totalOvers        : ms.settings!.totalOvers,
+      status            : 'in_progress',
+      createdAt         : DateTime.now(),
+      groupId           : ms.settings?.groupId,
+      maxOversPerBowler : ms.settings?.maxOversPerBowler,
     )));
 
     // 2. Register match ID so every ball publishes a live score.
