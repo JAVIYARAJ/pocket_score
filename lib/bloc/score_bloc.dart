@@ -31,6 +31,29 @@ class StartInnings extends ScoreEvent {
   });
 }
 
+class StartSuperOverInnings extends ScoreEvent {
+  final String battingTeamName;
+  final List<Player> battingLineup;
+  final List<Player> bowlingLineup;
+  final int target; // 0 for first SO innings, score+1 for second
+  final String strikerId;
+  final String nonStrikerId;
+  final String bowlerId;
+
+  StartSuperOverInnings({
+    required this.battingTeamName,
+    required this.battingLineup,
+    required this.bowlingLineup,
+    this.target = 0,
+    required this.strikerId,
+    required this.nonStrikerId,
+    required this.bowlerId,
+  });
+
+  @override
+  List<Object?> get props => [battingTeamName, target, strikerId, nonStrikerId, bowlerId];
+}
+
 class RecordBall extends ScoreEvent {
   final int runs;
   final BallType type;
@@ -98,7 +121,11 @@ class SelectNextBatsman extends ScoreEvent {
 class ScoreState extends Equatable {
   final Innings? firstInnings;
   final Innings? secondInnings;
+  final Innings? superOverFirstInnings;
+  final Innings? superOverSecondInnings;
   final bool isFirstInnings;
+  final bool isSuperOver;
+  final bool isSuperOverFirstInnings;
   final String strikerId;
   final String nonStrikerId;
   final String bowlerId;
@@ -114,7 +141,11 @@ class ScoreState extends Equatable {
   const ScoreState({
     this.firstInnings,
     this.secondInnings,
+    this.superOverFirstInnings,
+    this.superOverSecondInnings,
     this.isFirstInnings = true,
+    this.isSuperOver = false,
+    this.isSuperOverFirstInnings = true,
     this.strikerId = '',
     this.nonStrikerId = '',
     this.bowlerId = '',
@@ -133,7 +164,11 @@ class ScoreState extends Equatable {
       return <String, dynamic>{
         'firstInnings': h.firstInnings?.toJson(),
         'secondInnings': h.secondInnings?.toJson(),
+        'superOverFirstInnings': h.superOverFirstInnings?.toJson(),
+        'superOverSecondInnings': h.superOverSecondInnings?.toJson(),
         'isFirstInnings': h.isFirstInnings,
+        'isSuperOver': h.isSuperOver,
+        'isSuperOverFirstInnings': h.isSuperOverFirstInnings,
         'strikerId': h.strikerId,
         'nonStrikerId': h.nonStrikerId,
         'bowlerId': h.bowlerId,
@@ -151,7 +186,11 @@ class ScoreState extends Equatable {
     return {
       'firstInnings': firstInnings?.toJson(),
       'secondInnings': secondInnings?.toJson(),
+      'superOverFirstInnings': superOverFirstInnings?.toJson(),
+      'superOverSecondInnings': superOverSecondInnings?.toJson(),
       'isFirstInnings': isFirstInnings,
+      'isSuperOver': isSuperOver,
+      'isSuperOverFirstInnings': isSuperOverFirstInnings,
       'strikerId': strikerId,
       'nonStrikerId': nonStrikerId,
       'bowlerId': bowlerId,
@@ -165,10 +204,15 @@ class ScoreState extends Equatable {
       'history': historyJson,
     };
   }
+
   factory ScoreState.fromJson(Map<String, dynamic> json) => ScoreState(
     firstInnings: json['firstInnings'] != null ? Innings.fromJson(json['firstInnings']) : null,
     secondInnings: json['secondInnings'] != null ? Innings.fromJson(json['secondInnings']) : null,
+    superOverFirstInnings: json['superOverFirstInnings'] != null ? Innings.fromJson(json['superOverFirstInnings']) : null,
+    superOverSecondInnings: json['superOverSecondInnings'] != null ? Innings.fromJson(json['superOverSecondInnings']) : null,
     isFirstInnings: json['isFirstInnings'] ?? true,
+    isSuperOver: json['isSuperOver'] ?? false,
+    isSuperOverFirstInnings: json['isSuperOverFirstInnings'] ?? true,
     strikerId: json['strikerId'] ?? '',
     nonStrikerId: json['nonStrikerId'] ?? '',
     bowlerId: json['bowlerId'] ?? '',
@@ -182,20 +226,30 @@ class ScoreState extends Equatable {
     history: (json['history'] as List?)?.map((h) => ScoreState.fromJson(h)).toList() ?? const [],
   );
 
-  Innings? get currentInnings => isFirstInnings ? firstInnings : secondInnings;
+  Innings? get currentInnings {
+    if (isSuperOver) {
+      return isSuperOverFirstInnings ? superOverFirstInnings : superOverSecondInnings;
+    }
+    return isFirstInnings ? firstInnings : secondInnings;
+  }
 
   @override
   List<Object?> get props => [
-    firstInnings, secondInnings, isFirstInnings,
+    firstInnings, secondInnings, superOverFirstInnings, superOverSecondInnings,
+    isFirstInnings, isSuperOver, isSuperOverFirstInnings,
     strikerId, nonStrikerId, bowlerId,
-    battingLineup, bowlingLineup, outPlayerIds, retiredHurtIds, 
+    battingLineup, bowlingLineup, outPlayerIds, retiredHurtIds,
     pendingBowlerChange, isFreeHit, isLastManStanding, history,
   ];
 
   ScoreState copyWith({
     Innings? firstInnings,
     Innings? secondInnings,
+    Innings? superOverFirstInnings,
+    Innings? superOverSecondInnings,
     bool? isFirstInnings,
+    bool? isSuperOver,
+    bool? isSuperOverFirstInnings,
     String? strikerId,
     String? nonStrikerId,
     String? bowlerId,
@@ -211,7 +265,11 @@ class ScoreState extends Equatable {
     return ScoreState(
       firstInnings: firstInnings ?? this.firstInnings,
       secondInnings: secondInnings ?? this.secondInnings,
+      superOverFirstInnings: superOverFirstInnings ?? this.superOverFirstInnings,
+      superOverSecondInnings: superOverSecondInnings ?? this.superOverSecondInnings,
       isFirstInnings: isFirstInnings ?? this.isFirstInnings,
+      isSuperOver: isSuperOver ?? this.isSuperOver,
+      isSuperOverFirstInnings: isSuperOverFirstInnings ?? this.isSuperOverFirstInnings,
       strikerId: strikerId ?? this.strikerId,
       nonStrikerId: nonStrikerId ?? this.nonStrikerId,
       bowlerId: bowlerId ?? this.bowlerId,
@@ -284,6 +342,36 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         );
       }
       emit(next);
+      // Skip live score push for first innings: upsert_match is still in-flight
+      // (race condition). The match will be in DB before the first RecordBall push.
+      if (event.target != 0) _pushLiveScore(next);
+    });
+
+    on<StartSuperOverInnings>((event, emit) {
+      final newInnings = Innings(
+        battingTeamName: event.battingTeamName,
+        target: event.target,
+        battingPlayers: event.battingLineup,
+        bowlingPlayers: event.bowlingLineup,
+      );
+      final isFirst = event.target == 0;
+      final next = state.copyWith(
+        superOverFirstInnings: isFirst ? newInnings : null,
+        superOverSecondInnings: isFirst ? null : newInnings,
+        isSuperOver: true,
+        isSuperOverFirstInnings: isFirst,
+        strikerId: event.strikerId,
+        nonStrikerId: event.nonStrikerId,
+        bowlerId: event.bowlerId,
+        battingLineup: event.battingLineup,
+        bowlingLineup: event.bowlingLineup,
+        outPlayerIds: [],
+        retiredHurtIds: [],
+        isLastManStanding: event.nonStrikerId.isEmpty,
+        pendingBowlerChange: false,
+        history: const [],
+      );
+      emit(next);
       _pushLiveScore(next);
     });
 
@@ -320,7 +408,7 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
       if (event.isWicket) {
         final actualOutId = event.outPlayerId ?? state.strikerId;
         newOutPlayerIds.add(actualOutId);
-        
+
         if (event.nextBatsmanId != null) {
           if (newRetiredIds.contains(event.nextBatsmanId)) {
             newRetiredIds.remove(event.nextBatsmanId);
@@ -331,9 +419,9 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
             newNonStrikerId = event.nextBatsmanId!;
           }
         } else if (!state.isLastManStanding) {
-          final remaining = state.battingLineup.where((p) => 
-            !newOutPlayerIds.contains(p.id) && 
-            p.id != state.strikerId && 
+          final remaining = state.battingLineup.where((p) =>
+            !newOutPlayerIds.contains(p.id) &&
+            p.id != state.strikerId &&
             p.id != state.nonStrikerId
           ).toList();
 
@@ -381,8 +469,11 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
       bool nextBallIsFreeHit = (ball.type == BallType.noBall) || (state.isFreeHit && ball.type == BallType.wide);
 
       final nextState = state.copyWith(
-        firstInnings: state.isFirstInnings ? updatedInnings : null,
-        secondInnings: !state.isFirstInnings ? updatedInnings : null,
+        // Route updated innings to correct slot based on current mode
+        firstInnings: !state.isSuperOver && state.isFirstInnings ? updatedInnings : null,
+        secondInnings: !state.isSuperOver && !state.isFirstInnings ? updatedInnings : null,
+        superOverFirstInnings: state.isSuperOver && state.isSuperOverFirstInnings ? updatedInnings : null,
+        superOverSecondInnings: state.isSuperOver && !state.isSuperOverFirstInnings ? updatedInnings : null,
         strikerId: newStrikerId,
         nonStrikerId: newNonStrikerId,
         outPlayerIds: newOutPlayerIds,
@@ -453,7 +544,7 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
     on<RetirePlayer>((event, emit) {
       final newHistory = List<ScoreState>.from(state.history);
       newHistory.add(state.copyWith(history: const []));
-      
+
       List<String> newRetiredIds = List<String>.from(state.retiredHurtIds);
       if (!newRetiredIds.contains(event.playerId)) newRetiredIds.add(event.playerId);
 

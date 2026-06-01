@@ -100,15 +100,17 @@ class _OpeningSelectionScreenState extends State<OpeningSelectionScreen> {
 
     // 1. Create the match record in the database for the first time.
     context.read<MatchListBloc>().add(AddMatchToList(MatchSummary(
-      id         : matchId,
-      teamAName  : ms.settings!.teamAName,
-      teamBName  : ms.settings!.teamBName,
-      teamA      : ms.teamA,
-      teamB      : ms.teamB,
-      totalOvers : ms.settings!.totalOvers,
-      status     : 'in_progress',
-      createdAt  : DateTime.now(),
-      groupId    : ms.settings?.groupId,
+      id                : matchId,
+      teamAName         : ms.settings!.teamAName,
+      teamBName         : ms.settings!.teamBName,
+      teamA             : ms.teamA,
+      teamB             : ms.teamB,
+      totalOvers        : ms.settings!.totalOvers,
+      status            : 'in_progress',
+      createdAt         : DateTime.now(),
+      groupId           : ms.settings?.groupId,
+      maxOversPerBowler : ms.settings?.maxOversPerBowler,
+      powerPlayOvers    : ms.settings?.powerPlayOvers,
     )));
 
     // 2. Register match ID so every ball publishes a live score.
@@ -770,7 +772,7 @@ class _SwipeToStartState extends State<SwipeToStart> {
                                 height: _thumbSize,
                                 clipBehavior: Clip.antiAlias,
                                 decoration: BoxDecoration(
-                                  color: Colors.white, // Ensure solid background
+                                  color: Colors.transparent, // Ensure transparent background
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(

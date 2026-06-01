@@ -946,13 +946,16 @@ class _GroupMatchCard extends StatelessWidget {
       onTap: () {
         if (isLive) {
           context.push('/live/${match.id}', extra: {
-            'teamAName' : match.teamAName,
-            'teamBName' : match.teamBName,
-            'totalOvers': match.totalOvers,
+            'teamAName'     : match.teamAName,
+            'teamBName'     : match.teamBName,
+            'totalOvers'    : match.totalOvers,
+            'powerPlayOvers': match.powerPlayOvers,
           });
         } else if (isCompleted && match.scoreData != null) {
-          final state = ScoreState.fromJson(match.scoreData!);
-          context.push('/scorecard', extra: state);
+          context.push('/scorecard', extra: {
+            'state': ScoreState.fromJson(match.scoreData!),
+            'overs': match.totalOvers,
+          });
         }
       },
       child: Container(

@@ -22,6 +22,7 @@ class LiveScoreScreen extends StatefulWidget {
   final String teamAName;
   final String teamBName;
   final int    totalOvers;
+  final int?   powerPlayOvers;
 
   const LiveScoreScreen({
     super.key,
@@ -29,6 +30,7 @@ class LiveScoreScreen extends StatefulWidget {
     required this.teamAName,
     required this.teamBName,
     this.totalOvers = 0,
+    this.powerPlayOvers,
   });
 
   @override
@@ -130,7 +132,7 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
     } else {
       try {
         final score = ScoreState.fromJson(_scoreData!);
-        body = _LiveBody(score: score, totalOvers: widget.totalOvers);
+        body = _LiveBody(score: score, totalOvers: widget.totalOvers, powerPlayOvers: widget.powerPlayOvers);
       } catch (_) {
         body = const _ErrorView(message: 'Could not parse score data.');
       }
@@ -219,7 +221,8 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
 class _LiveBody extends StatelessWidget {
   final ScoreState score;
   final int        totalOvers;
-  const _LiveBody({required this.score, this.totalOvers = 0});
+  final int?       powerPlayOvers;
+  const _LiveBody({required this.score, this.totalOvers = 0, this.powerPlayOvers});
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   String _name(List<dynamic> players, String? id) {
@@ -284,10 +287,15 @@ class _LiveBody extends StatelessWidget {
     final batPlayers  = innings.battingPlayers;
     final bowlPlayers = innings.bowlingPlayers;
 
-    final isChasing = innings.target > 0;
-    final runsNeeded = innings.target - innings.totalRuns;
-    final legalBalls = innings.legalBallsCount;
-    final ballsRemaining = (totalOvers * 6) - legalBalls;
+    final isSuperOver    = score.isSuperOver;
+    final isChasing      = innings.target > 0;
+    final runsNeeded     = innings.target - innings.totalRuns;
+    final legalBalls     = innings.legalBallsCount;
+    // Super over is always 1 over (6 balls); regular match uses totalOvers setting
+    final effectiveOvers = isSuperOver ? 1 : totalOvers;
+    final inPowerPlay    = !isSuperOver && powerPlayOvers != null &&
+        innings.legalBallsCount ~/ 6 < powerPlayOvers!;
+    final ballsRemaining = (effectiveOvers * 6) - legalBalls;
     final rrr = (isChasing && ballsRemaining > 0)
         ? (runsNeeded / ballsRemaining) * 6
         : 0.0;
@@ -310,11 +318,15 @@ class _LiveBody extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: AppColors.scoreGradient,
+              gradient: isSuperOver
+                  ? const LinearGradient(
+                      colors: [Color(0xFF92400E), Color(0xFFB45309), Color(0xFFD97706)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight)
+                  : AppColors.scoreGradient,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.3),
+                  color: (isSuperOver ? AppColors.accent : AppColors.primary).withValues(alpha: 0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -322,26 +334,55 @@ class _LiveBody extends StatelessWidget {
             ),
             child: Column(
               children: [
-                // Innings label
+                // Innings label + optional Power Play badge
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        score.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS',
-                        style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white70,
-                            letterSpacing: 1.5),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSuperOver) ...[
+                            const Icon(Icons.bolt_rounded, size: 10, color: Colors.white),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            isSuperOver
+                                ? 'SUPER OVER'
+                                : (score.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS'),
+                            style: const TextStyle(
+                                fontSize: 9, fontWeight: FontWeight.w800,
+                                color: Colors.white70, letterSpacing: 1.5),
+                          ),
+                        ],
                       ),
                     ),
+                    if (inPowerPlay) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.security_rounded, size: 10, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text('POWER PLAY',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800,
+                                    color: Colors.white, letterSpacing: 1.5)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -426,7 +467,7 @@ class _LiveBody extends StatelessWidget {
             Expanded(
               child: _InfoTile(
                 label : 'WICKETS',
-                value : '${innings.totalWickets}/10',
+                value : '${innings.totalWickets}/${isSuperOver ? 2 : 10}',
                 color : AppColors.danger,
                 icon  : Icons.sports_baseball_rounded,
               ),

@@ -55,12 +55,65 @@ class ScorecardView extends StatelessWidget {
           const SizedBox(height: 12),
           _extrasSummary(state.secondInnings!),
         ],
+
+        // ── Super Over innings ────────────────────────────────
+        if (state.superOverFirstInnings != null) ...[
+          const SizedBox(height: 32),
+          _superOverDivider(),
+          const SizedBox(height: 16),
+          _inningsSection(context, state.superOverFirstInnings!, isFirst: true, isSuperOver: true),
+        ],
+        if (state.superOverSecondInnings != null) ...[
+          const SizedBox(height: 24),
+          _inningsSection(context, state.superOverSecondInnings!, isFirst: false, isSuperOver: true),
+        ],
+        if (state.superOverFirstInnings != null || state.superOverSecondInnings != null) ...[
+          const SizedBox(height: 24),
+          if (state.superOverFirstInnings != null) _extrasSummary(state.superOverFirstInnings!),
+          if (state.superOverSecondInnings != null) ...[
+            const SizedBox(height: 12),
+            _extrasSummary(state.superOverSecondInnings!),
+          ],
+        ],
+
         const SizedBox(height: 40),
       ],
     );
   }
 
-  Widget _inningsSection(BuildContext context, Innings inn, {required bool isFirst}) {
+  static const _soGradient = LinearGradient(
+    colors: [Color(0xFF92400E), Color(0xFFB45309), Color(0xFFD97706)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  Widget _superOverDivider() {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: AppColors.accent.withValues(alpha: 0.3), thickness: 1)),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            gradient: _soGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: AppColors.accent.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.bolt_rounded, size: 13, color: Colors.white),
+              SizedBox(width: 5),
+              Text('SUPER OVER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5)),
+            ],
+          ),
+        ),
+        Expanded(child: Divider(color: AppColors.accent.withValues(alpha: 0.3), thickness: 1)),
+      ],
+    );
+  }
+
+  Widget _inningsSection(BuildContext context, Innings inn, {required bool isFirst, bool isSuperOver = false}) {
     final bats = inn.batsmanStats;
     final bowls = inn.bowlerStatsMap;
 
@@ -70,22 +123,37 @@ class ScorecardView extends StatelessWidget {
         // Header
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: const BoxDecoration(
-            gradient: AppColors.scoreGradient,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          decoration: BoxDecoration(
+            gradient: isSuperOver ? _soGradient : AppColors.scoreGradient,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text(inn.battingTeamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white), overflow: TextOverflow.ellipsis),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isSuperOver)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text('SUPER OVER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5)),
+                      ),
+                    Text(inn.battingTeamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
               ),
               const SizedBox(width: 8),
               Row(
                 children: [
                   Text('${inn.totalRuns}/${inn.totalWickets}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
                   const SizedBox(width: 6),
-                  Text('(${inn.overDisplay} ov)', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                  Text('(${inn.overDisplay} ov)', style: const TextStyle(fontSize: 13, color: Colors.white70)),
                 ],
               ),
             ],

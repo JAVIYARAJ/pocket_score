@@ -436,8 +436,10 @@ class _HeroHeader extends StatelessWidget {
                     onTap: () {
                       if (last.scoreData != null) {
                         try {
-                          context.push('/scorecard',
-                              extra: ScoreState.fromJson(last.scoreData!));
+                          context.push('/scorecard', extra: {
+                            'state': ScoreState.fromJson(last.scoreData!),
+                            'overs': last.totalOvers,
+                          });
                         } catch (_) {}
                       }
                     },
@@ -755,9 +757,10 @@ class _LiveBannerState extends State<_LiveBanner> {
 
   void _watchLive(BuildContext context) {
     context.push('/live/${widget.match.id}', extra: {
-      'teamAName': widget.match.teamAName,
-      'teamBName': widget.match.teamBName,
-      'totalOvers': widget.match.totalOvers,
+      'teamAName'    : widget.match.teamAName,
+      'teamBName'    : widget.match.teamBName,
+      'totalOvers'   : widget.match.totalOvers,
+      'powerPlayOvers': widget.match.powerPlayOvers,
     });
   }
 
@@ -1371,14 +1374,17 @@ class _MatchCard extends StatelessWidget {
         if (isLive) {
           // Open the detailed live view (same Cricbuzz-style screen as group)
           context.push('/live/${match.id}', extra: {
-            'teamAName' : match.teamAName,
-            'teamBName' : match.teamBName,
-            'totalOvers': match.totalOvers,
+            'teamAName'     : match.teamAName,
+            'teamBName'     : match.teamBName,
+            'totalOvers'    : match.totalOvers,
+            'powerPlayOvers': match.powerPlayOvers,
           });
         } else if (isDone && match.scoreData != null) {
           try {
-            context.push('/scorecard',
-                extra: ScoreState.fromJson(match.scoreData!));
+            context.push('/scorecard', extra: {
+              'state': ScoreState.fromJson(match.scoreData!),
+              'overs': match.totalOvers,
+            });
           } catch (_) {}
         }
       },

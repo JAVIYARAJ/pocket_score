@@ -34,6 +34,8 @@ class MatchSettings extends Equatable {
   final String teamBName;
   final String? groupId;
   final String? tournamentId;
+  final int? maxOversPerBowler;
+  final int? powerPlayOvers;
 
   const MatchSettings({
     required this.totalOvers,
@@ -41,6 +43,8 @@ class MatchSettings extends Equatable {
     required this.teamBName,
     this.groupId,
     this.tournamentId,
+    this.maxOversPerBowler,
+    this.powerPlayOvers,
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +53,8 @@ class MatchSettings extends Equatable {
     'teamBName': teamBName,
     'groupId': groupId,
     'tournamentId': tournamentId,
+    'maxOversPerBowler': maxOversPerBowler,
+    'powerPlayOvers': powerPlayOvers,
   };
 
   factory MatchSettings.fromJson(Map<String, dynamic> json) => MatchSettings(
@@ -57,10 +63,30 @@ class MatchSettings extends Equatable {
     teamBName: json['teamBName'],
     groupId: json['groupId'],
     tournamentId: json['tournamentId'],
+    maxOversPerBowler: json['maxOversPerBowler'] as int?,
+    powerPlayOvers: json['powerPlayOvers'] as int?,
+  );
+
+  MatchSettings copyWith({
+    int? totalOvers,
+    String? teamAName,
+    String? teamBName,
+    String? groupId,
+    String? tournamentId,
+    int? maxOversPerBowler,
+    int? powerPlayOvers,
+  }) => MatchSettings(
+    totalOvers        : totalOvers        ?? this.totalOvers,
+    teamAName         : teamAName         ?? this.teamAName,
+    teamBName         : teamBName         ?? this.teamBName,
+    groupId           : groupId           ?? this.groupId,
+    tournamentId      : tournamentId      ?? this.tournamentId,
+    maxOversPerBowler : maxOversPerBowler ?? this.maxOversPerBowler,
+    powerPlayOvers    : powerPlayOvers    ?? this.powerPlayOvers,
   );
 
   @override
-  List<Object?> get props => [totalOvers, teamAName, teamBName, groupId, tournamentId];
+  List<Object?> get props => [totalOvers, teamAName, teamBName, groupId, tournamentId, maxOversPerBowler, powerPlayOvers];
 }
 
 /// A lightweight summary stored in the match list
@@ -83,6 +109,8 @@ class MatchSummary extends Equatable {
   final Map<String, dynamic>? scoreData;
   final String? groupId;
   final String? tournamentId;
+  final int? maxOversPerBowler;
+  final int? powerPlayOvers;
 
   const MatchSummary({
     required this.id,
@@ -103,6 +131,8 @@ class MatchSummary extends Equatable {
     this.scoreData,
     this.groupId,
     this.tournamentId,
+    this.maxOversPerBowler,
+    this.powerPlayOvers,
   });
 
   Map<String, dynamic> toJson() => {
@@ -124,6 +154,8 @@ class MatchSummary extends Equatable {
     'scoreData': scoreData,
     'groupId': groupId,
     'tournamentId': tournamentId,
+    'maxOversPerBowler': maxOversPerBowler,
+    'powerPlayOvers': powerPlayOvers,
   };
 
   factory MatchSummary.fromJson(Map<String, dynamic> json) => MatchSummary(
@@ -145,6 +177,8 @@ class MatchSummary extends Equatable {
     scoreData: json['scoreData'] != null ? Map<String, dynamic>.from(json['scoreData']) : null,
     groupId: json['groupId'],
     tournamentId: json['tournamentId'],
+    maxOversPerBowler: json['maxOversPerBowler'] as int?,
+    powerPlayOvers: json['powerPlayOvers'] as int?,
   );
 
   MatchSummary copyWith({
@@ -161,6 +195,8 @@ class MatchSummary extends Equatable {
     Team? teamB,
     String? groupId,
     String? tournamentId,
+    int? maxOversPerBowler,
+    int? powerPlayOvers,
   }) {
     return MatchSummary(
       id: id,
@@ -181,10 +217,12 @@ class MatchSummary extends Equatable {
       scoreData: scoreData ?? this.scoreData,
       groupId: groupId ?? this.groupId,
       tournamentId: tournamentId ?? this.tournamentId,
+      maxOversPerBowler: maxOversPerBowler ?? this.maxOversPerBowler,
+      powerPlayOvers: powerPlayOvers ?? this.powerPlayOvers,
     );
   }
 
   @override
   List<Object?> get props => [id, teamAName, teamBName, teamA, teamB, totalOvers, status, result,
-    teamAScore, teamAWickets, teamAOvers, teamBScore, teamBWickets, teamBOvers, createdAt, scoreData, groupId, tournamentId];
+    teamAScore, teamAWickets, teamAOvers, teamBScore, teamBWickets, teamBOvers, createdAt, scoreData, groupId, tournamentId, maxOversPerBowler, powerPlayOvers];
 }

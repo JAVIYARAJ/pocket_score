@@ -30,9 +30,8 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _teamAController = TextEditingController();
   final _teamBController = TextEditingController();
-  final ValueNotifier<int> _oversNotifier = ValueNotifier<int>(5);
-  final ValueNotifier<String?> _selectedGroupIdNotifier =
-      ValueNotifier<String?>(null);
+  final ValueNotifier<int>    _oversNotifier              = ValueNotifier<int>(5);
+  final ValueNotifier<String?> _selectedGroupIdNotifier  = ValueNotifier<String?>(null);
   List<Group> _myGroups = [];
 
   @override
@@ -67,10 +66,10 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
     if (_formKey.currentState!.validate()) {
       final matchId = DateTime.now().millisecondsSinceEpoch.toString();
       final settings = MatchSettings(
-        teamAName : _teamAController.text.trim(),
-        teamBName : _teamBController.text.trim(),
-        totalOvers: _oversNotifier.value,
-        groupId   : _selectedGroupIdNotifier.value,
+        teamAName  : _teamAController.text.trim(),
+        teamBName  : _teamBController.text.trim(),
+        totalOvers : _oversNotifier.value,
+        groupId    : _selectedGroupIdNotifier.value,
       );
       // Store match settings in memory only.
       // The database record is created only after the user confirms at the

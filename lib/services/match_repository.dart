@@ -181,6 +181,11 @@ class MatchRepository {
       processInnings(firstInnings,  1);
       processInnings(secondInnings, 2);
 
+      final superOverFirstInnings  = parseInnings(scoreJson['superOverFirstInnings']);
+      final superOverSecondInnings = parseInnings(scoreJson['superOverSecondInnings']);
+      processInnings(superOverFirstInnings,  3);
+      processInnings(superOverSecondInnings, 4);
+
       if (rows.isNotEmpty) {
         await _client.rpc('upsert_player_match_stats', params: {'p_stats': rows});
       }
@@ -210,7 +215,9 @@ class MatchRepository {
     teamBOvers   : r['team_b_overs'] as String?,
     createdAt    : DateTime.parse(r['created_at'] as String),
     scoreData    : r['score_data'] != null ? Map<String, dynamic>.from(r['score_data'] as Map) : null,
-    groupId      : r['group_id'] as String?,
+    groupId           : r['group_id'] as String?,
+    maxOversPerBowler : r['max_overs_per_bowler'] as int?,
+    powerPlayOvers    : r['power_play_overs'] as int?,
   );
 
   Map<String, dynamic> _toJson(MatchSummary m) => {
@@ -229,6 +236,8 @@ class MatchRepository {
     'team_b_wickets' : m.teamBWickets,
     'team_b_overs'   : m.teamBOvers,
     'score_data'     : m.scoreData,
-    'group_id'       : m.groupId,
+    'group_id'            : m.groupId,
+    'max_overs_per_bowler': m.maxOversPerBowler,
+    'power_play_overs'    : m.powerPlayOvers,
   };
 }
