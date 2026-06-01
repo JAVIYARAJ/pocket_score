@@ -770,7 +770,7 @@ class _SwipeToStartState extends State<SwipeToStart> {
                                 height: _thumbSize,
                                 clipBehavior: Clip.antiAlias,
                                 decoration: BoxDecoration(
-                                  color: Colors.white, // Ensure solid background
+                                  color: Colors.transparent, // Ensure transparent background
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(

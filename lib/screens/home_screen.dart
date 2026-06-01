@@ -436,8 +436,10 @@ class _HeroHeader extends StatelessWidget {
                     onTap: () {
                       if (last.scoreData != null) {
                         try {
-                          context.push('/scorecard',
-                              extra: ScoreState.fromJson(last.scoreData!));
+                          context.push('/scorecard', extra: {
+                            'state': ScoreState.fromJson(last.scoreData!),
+                            'overs': last.totalOvers,
+                          });
                         } catch (_) {}
                       }
                     },
@@ -1377,8 +1379,10 @@ class _MatchCard extends StatelessWidget {
           });
         } else if (isDone && match.scoreData != null) {
           try {
-            context.push('/scorecard',
-                extra: ScoreState.fromJson(match.scoreData!));
+            context.push('/scorecard', extra: {
+              'state': ScoreState.fromJson(match.scoreData!),
+              'overs': match.totalOvers,
+            });
           } catch (_) {}
         }
       },

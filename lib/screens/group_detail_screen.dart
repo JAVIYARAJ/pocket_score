@@ -951,8 +951,10 @@ class _GroupMatchCard extends StatelessWidget {
             'totalOvers': match.totalOvers,
           });
         } else if (isCompleted && match.scoreData != null) {
-          final state = ScoreState.fromJson(match.scoreData!);
-          context.push('/scorecard', extra: state);
+          context.push('/scorecard', extra: {
+            'state': ScoreState.fromJson(match.scoreData!),
+            'overs': match.totalOvers,
+          });
         }
       },
       child: Container(

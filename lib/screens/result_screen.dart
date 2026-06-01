@@ -2,12 +2,14 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'pdf_preview_screen.dart';
 import '../bloc/score_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/match_list_bloc.dart';
 import '../models/innings_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
+import '../utils/match_pdf_generator.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -21,6 +23,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   late Animation<double> _fade;
   late Animation<double> _slideUp;
   late ScoreState _savedState;
+  String _resultString = '';
 
   @override
   void initState() {
@@ -64,6 +67,8 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       }
     }
 
+    _resultString = result;
+
     final matchId = context.read<MatchBloc>().state.matchId;
     if (matchId != null) {
       final ml = context.read<MatchListBloc>().state.matches;
@@ -102,7 +107,10 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   }
 
   void _viewScorecard() {
-    context.push('/scorecard', extra: _savedState);
+    context.push('/scorecard', extra: {
+      'state': _savedState,
+      'overs': context.read<MatchBloc>().state.settings?.totalOvers ?? 0,
+    });
   }
 
   void _startSuperOver() {
@@ -118,6 +126,22 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       'bowlingTeam': bowlingTeam,
       'target'     : 0,
     });
+  }
+
+  void _openPdfPreview() {
+    final ms    = context.read<MatchBloc>().state;
+    final overs = ms.settings?.totalOvers ?? 0;
+    final id    = ms.matchId ?? 'score';
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfPreviewScreen(
+          buildPdf : () => generateMatchResultPdf(_savedState, _resultString, DateTime.now(), overs),
+          filename : 'match_result_$id.pdf',
+          title    : _resultString,
+        ),
+      ),
+    );
   }
 
   @override
@@ -245,6 +269,24 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
                       ),
                       const SizedBox(height: 12),
                     ],
+
+                    // Share as PDF button
+                    FadeTransition(
+                      opacity: _fade,
+                      child: OutlinedButton.icon(
+                        onPressed: _openPdfPreview,
+                        icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                        label: const Text('Share as PDF'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: AppColors.primary, width: 1.5),
+                          foregroundColor: AppColors.primary,
+                          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
 
                     // Scorecard button
                     FadeTransition(

@@ -240,8 +240,14 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
         GoRoute(
           path: '/scorecard',
           builder: (context, state) {
-            final scoreState = state.extra! as ScoreState;
-            return ScorecardScreen(scoreState: scoreState);
+            final extra = state.extra!;
+            if (extra is Map<String, dynamic>) {
+              return ScorecardScreen(
+                scoreState: extra['state'] as ScoreState,
+                totalOvers: (extra['overs'] as int?) ?? 0,
+              );
+            }
+            return ScorecardScreen(scoreState: extra as ScoreState);
           },
         ),
 

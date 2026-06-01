@@ -604,7 +604,10 @@ class _ScoringAppBar extends StatelessWidget {
           icon: Icons.bar_chart_rounded,
           color: AppColors.primary,
           bg: AppColors.primary.withValues(alpha: 0.1),
-          onTap: () => context.push('/scorecard', extra: state),
+          onTap: () => context.push('/scorecard', extra: {
+            'state': state,
+            'overs': context.read<MatchBloc>().state.settings?.totalOvers ?? 0,
+          }),
         ),
         const SizedBox(width: 8),
         // End Game
@@ -2774,7 +2777,7 @@ class _DialogSwipeToStartState extends State<_DialogSwipeToStart> {
                                 height: _thumbSize,
                                 clipBehavior: Clip.antiAlias,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: Colors.transparent,
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
