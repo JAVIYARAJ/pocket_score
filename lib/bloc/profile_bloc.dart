@@ -29,6 +29,14 @@ class UpdatePlayerPreferences extends ProfileEvent {
   List<Object?> get props => [playerRole, battingStyle, bowlingStyle];
 }
 
+class RequestAccountDeletion extends ProfileEvent {
+  const RequestAccountDeletion();
+}
+
+class CancelAccountDeletion extends ProfileEvent {
+  const CancelAccountDeletion();
+}
+
 // ── States ──────────────────────────────────────────────────────────────────
 abstract class ProfileState extends Equatable {
   const ProfileState();
@@ -56,6 +64,17 @@ class ProfileError extends ProfileState {
   const ProfileError(this.message);
   @override
   List<Object?> get props => [message];
+}
+
+class AccountDeletionRequested extends ProfileState {
+  final DateTime hardDeleteAt;
+  const AccountDeletionRequested(this.hardDeleteAt);
+  @override
+  List<Object?> get props => [hardDeleteAt];
+}
+
+class AccountDeletionCancelled extends ProfileState {
+  const AccountDeletionCancelled();
 }
 
 // ── Bloc ─────────────────────────────────────────────────────────────────────
@@ -93,6 +112,32 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
             battingStyle : event.battingStyle,
             bowlingStyle : event.bowlingStyle,
           )));
+        } else {
+          add(const LoadProfile());
+        }
+      } catch (e) {
+        emit(ProfileError(e.toString()));
+      }
+    });
+
+    on<RequestAccountDeletion>((event, emit) async {
+      try {
+        final hardDeleteAt = await _repo.requestAccountDeletion();
+        emit(AccountDeletionRequested(hardDeleteAt));
+      } catch (e) {
+        emit(ProfileError(e.toString()));
+      }
+    });
+
+    on<CancelAccountDeletion>((event, emit) async {
+      final current = state is ProfileLoaded
+          ? (state as ProfileLoaded).profile
+          : null;
+      try {
+        await _repo.cancelAccountDeletion();
+        emit(const AccountDeletionCancelled());
+        if (current != null) {
+          emit(ProfileLoaded(current.copyWith(clearDeletedAt: true)));
         } else {
           add(const LoadProfile());
         }

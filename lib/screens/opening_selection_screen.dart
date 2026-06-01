@@ -678,37 +678,40 @@ class _SwipeToStartState extends State<SwipeToStart> {
                 alignment: Alignment.centerLeft,
                 children: [
                   // Background track text
-                  Center(
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _dragNotifier,
-                      builder: (context, dragOffset, child) {
-                        return AnimatedOpacity(
-                          duration: const Duration(milliseconds: 150),
-                          opacity: dragOffset > maxDrag * 0.2 ? 0.0 : 1.0,
-                          child: child,
-                        );
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.text,
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 2.0,
-                                color: isDragging
-                                    ? AppColors.primary
-                                    : AppColors.textPrimary),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(Icons.keyboard_double_arrow_right_rounded,
-                              size: 20,
-                              color: (isDragging
+                  Positioned.fill(
+                    left: _thumbSize,
+                    child: Center(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _dragNotifier,
+                        builder: (context, dragOffset, child) {
+                          return AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: dragOffset > maxDrag * 0.2 ? 0.0 : 1.0,
+                            child: child,
+                          );
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.text,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 2.0,
+                                  color: isDragging
                                       ? AppColors.primary
-                                      : AppColors.textPrimary)
-                                  .withValues(alpha: 0.6)),
-                        ],
+                                      : AppColors.textPrimary),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(Icons.keyboard_double_arrow_right_rounded,
+                                size: 20,
+                                color: (isDragging
+                                        ? AppColors.primary
+                                        : AppColors.textPrimary)
+                                    .withValues(alpha: 0.6)),
+                          ],
+                        ),
                       ),
                     ),
                   ),

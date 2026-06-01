@@ -6,7 +6,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../bloc/auth_cubit.dart' show AuthBloc, PocketAuthState, SignOut;
 import '../bloc/match_list_bloc.dart';
-import '../bloc/profile_bloc.dart';
+import '../bloc/profile_bloc.dart'
+    show
+        ProfileBloc,
+        ProfileState,
+        ProfileLoaded,
+        ProfileError,
+        UpdatePlayerPreferences,
+        RequestAccountDeletion,
+        CancelAccountDeletion,
+        AccountDeletionRequested,
+        AccountDeletionCancelled;
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
@@ -49,7 +59,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            return BlocBuilder<MatchListBloc, MatchListState>(
+            return BlocListener<ProfileBloc, ProfileState>(
+              listenWhen: (_, s) =>
+                  s is AccountDeletionRequested ||
+                  s is AccountDeletionCancelled ||
+                  s is ProfileError,
+              listener: (context, state) {
+                if (state is AccountDeletionRequested) {
+                  context.read<AuthBloc>().add(const SignOut());
+                } else if (state is AccountDeletionCancelled) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Account deletion cancelled. Welcome back!'),
+                      backgroundColor: AppColors.success,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  );
+                } else if (state is ProfileError) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(state.message),
+                      backgroundColor: AppColors.danger,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  );
+                }
+              },
+              child: BlocBuilder<MatchListBloc, MatchListState>(
               builder: (context, matchListState) {
                 final completed = matchListState.matches
                     .where((m) => m.status == 'completed')
@@ -77,6 +115,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       // ── STADIUM & PITCH HEADER ──
                       _buildStadiumHeader(context, top, user, myStats),
                       const SizedBox(height: 24),
+
+                      // ── DELETION BANNER (above tabs so spacing is consistent) ──
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: _buildDeletionBanner(context),
+                      ),
 
                       ValueListenableBuilder<int>(
                         valueListenable: _activeTabNotifier,
@@ -106,7 +150,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         totalFours,
                                         totalSixes,
                                       ),
-
                                     const SizedBox(height: 24),
                                     _buildAccountCard(user),
                                     const SizedBox(height: 16),
@@ -123,11 +166,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 );
               },
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
-    );
+    ),
+  );
   }
 
   // ── CUSTOM SEGMENTED TAB BAR ──
@@ -673,8 +717,95 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── ACTIONS CARD (SIGN OUT) ──
+  // ── DELETION WARNING BANNER ──
+  Widget _buildDeletionBanner(BuildContext context) {
+    final profileState = context.watch<ProfileBloc>().state;
+    final profile = profileState is ProfileLoaded ? profileState.profile : null;
+    if (profile == null || !profile.isPendingDeletion) return const SizedBox.shrink();
+
+    final scheduledDate = profile.deletedAt!.add(const Duration(days: 7));
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr =
+        '${months[scheduledDate.month - 1]} ${scheduledDate.day}, ${scheduledDate.year}';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.warning_amber_rounded,
+                  color: AppColors.warning, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Account deletion scheduled',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Your account will be permanently deleted on $dateStr. Cancel anytime before then.',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: () => context
+                        .read<ProfileBloc>()
+                        .add(const CancelAccountDeletion()),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Cancel Deletion',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── ACTIONS CARD (SIGN OUT + DELETE ACCOUNT) ──
   Widget _buildActionsCard(BuildContext context) {
+    final profileState = context.watch<ProfileBloc>().state;
+    final isPending = profileState is ProfileLoaded &&
+        profileState.profile.isPendingDeletion;
+
     return Container(
       decoration: AppDecorations.card(),
       child: Column(
@@ -685,7 +816,139 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label: 'Sign Out Account',
             onTap: () => _confirmSignOut(context),
           ),
+          if (!isPending) ...[
+            const Divider(height: 1, color: AppColors.border, indent: 56),
+            _ActionRow(
+              icon: Icons.delete_forever_rounded,
+              iconColor: AppColors.danger,
+              label: 'Delete Account',
+              onTap: () => _confirmDeleteAccount(context),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  void _confirmDeleteAccount(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: EdgeInsets.fromLTRB(
+            24, 20, 24, MediaQuery.of(ctx).padding.bottom + 24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_forever_rounded,
+                  color: AppColors.danger, size: 30),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Delete Account?',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.schedule_rounded,
+                          size: 14, color: AppColors.warning),
+                      SizedBox(width: 6),
+                      Text(
+                        '7-day grace period',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.warning),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Your account will be soft-deleted for 7 days. You can log back in and cancel anytime within that window. After 7 days, all your data is permanently removed.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This will delete your matches, players, stats, and group memberships.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 12, color: AppColors.textMuted, height: 1.4),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Keep Account'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.danger,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      context
+                          .read<ProfileBloc>()
+                          .add(const RequestAccountDeletion());
+                    },
+                    child: const Text('Delete',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

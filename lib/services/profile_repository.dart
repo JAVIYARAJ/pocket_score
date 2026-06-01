@@ -22,4 +22,19 @@ class ProfileRepository {
       'p_bowling_style' : bowlingStyle,
     });
   }
+
+  Future<DateTime> requestAccountDeletion() async {
+    final result = await _client.rpc('request_account_deletion') as Map;
+    return DateTime.parse(result['hard_delete_at'] as String);
+  }
+
+  Future<void> cancelAccountDeletion() async {
+    await _client.rpc('cancel_account_deletion');
+  }
+
+  Future<Map<String, dynamic>?> getDeletionStatus() async {
+    final rows = await _client.rpc('get_deletion_status') as List;
+    if (rows.isEmpty) return null;
+    return Map<String, dynamic>.from(rows.first as Map);
+  }
 }
