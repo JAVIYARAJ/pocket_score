@@ -19,9 +19,18 @@ class ScorecardScreen extends StatelessWidget {
   }
 
   String? _getWinMessage() {
-    final first = scoreState.firstInnings;
+    final first  = scoreState.firstInnings;
     final second = scoreState.secondInnings;
     if (first == null || second == null) return null;
+
+    // Super over result takes precedence
+    final soFirst  = scoreState.superOverFirstInnings;
+    final soSecond = scoreState.superOverSecondInnings;
+    if (soFirst != null && soSecond != null) {
+      if (soSecond.totalRuns > soFirst.totalRuns) return '⚡ ${soSecond.battingTeamName} won SO';
+      if (soSecond.totalRuns < soFirst.totalRuns) return '⚡ ${soFirst.battingTeamName} won SO';
+      return "Super Over Tied!";
+    }
 
     if (second.totalRuns > first.totalRuns) {
       final w = scoreState.battingLineup.length - 1 - second.totalWickets;

@@ -38,6 +38,7 @@ import 'screens/team_selection_screen.dart';
 import 'screens/team_preview_screen.dart';
 import 'screens/toss_screen.dart';
 import 'screens/opening_selection_screen.dart';
+import 'screens/super_over_opening_screen.dart';
 import 'screens/scoring_screen.dart';
 import 'screens/result_screen.dart';
 import 'screens/scorecard_screen.dart';
@@ -211,6 +212,17 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           },
         ),
         GoRoute(path: '/match/result', builder: (_, __) => const ResultScreen()),
+        GoRoute(
+          path: '/match/super-over/opening',
+          builder: (context, state) {
+            final extra = state.extra! as Map<String, dynamic>;
+            return SuperOverOpeningScreen(
+              battingTeam: extra['battingTeam'] as Team,
+              bowlingTeam: extra['bowlingTeam'] as Team,
+              target: (extra['target'] as int?) ?? 0,
+            );
+          },
+        ),
 
         // ── Live spectator view ─────────────────────────────────────────
         GoRoute(

@@ -24,25 +24,44 @@ class ScoringScreen extends StatelessWidget {
           final inn = state.currentInnings!;
           final totalOvers =
               context.read<MatchBloc>().state.settings?.totalOvers ?? 0;
-          bool victory = !state.isFirstInnings &&
-              inn.totalRuns >= (state.firstInnings?.totalRuns ?? 0) + 1;
-          bool oversUp = inn.legalBallsCount >= totalOvers * 6;
+          final outCount = state.outPlayerIds.length + state.retiredHurtIds.length;
+          final battingLen = state.battingLineup.length;
           bool allOut = state.isLastManStanding
-              ? (state.outPlayerIds.length + state.retiredHurtIds.length) >=
-                  state.battingLineup.length
-              : (state.outPlayerIds.length + state.retiredHurtIds.length) >=
-                  state.battingLineup.length - 1;
+              ? outCount >= battingLen
+              : outCount >= battingLen - 1;
 
-          if (victory || oversUp || allOut) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (state.isFirstInnings) {
-                if (!state.pendingBowlerChange || oversUp || allOut) {
-                  _inningsBreak(context, state);
+          if (state.isSuperOver) {
+            // Super over: 1-over limit per team, 2 wickets = innings over
+            bool oversUp  = inn.legalBallsCount >= 6;
+            bool soAllOut = outCount >= 2;
+            bool soVictory = !state.isSuperOverFirstInnings &&
+                inn.totalRuns >= (state.superOverFirstInnings?.totalRuns ?? 0) + 1;
+
+            if (soVictory || oversUp || soAllOut) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (state.isSuperOverFirstInnings) {
+                  _superOverBreak(context, state);
+                } else {
+                  context.push('/match/result');
                 }
-              } else {
-                context.push('/match/result');
-              }
-            });
+              });
+            }
+          } else {
+            bool victory = !state.isFirstInnings &&
+                inn.totalRuns >= (state.firstInnings?.totalRuns ?? 0) + 1;
+            bool oversUp = inn.legalBallsCount >= totalOvers * 6;
+
+            if (victory || oversUp || allOut) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (state.isFirstInnings) {
+                  if (!state.pendingBowlerChange || oversUp || allOut) {
+                    _inningsBreak(context, state);
+                  }
+                } else {
+                  context.push('/match/result');
+                }
+              });
+            }
           }
         }
       },
@@ -155,6 +174,40 @@ class ScoringScreen extends StatelessWidget {
     );
   }
 
+
+  static void _superOverBreak(BuildContext context, ScoreState state) {
+    final ms    = context.read<MatchBloc>().state;
+    final soInn = state.superOverFirstInnings!;
+    final target = soInn.totalRuns + 1;
+    final teamA  = ms.teamA!;
+    final teamB  = ms.teamB!;
+    // The team that batted in SO first innings bats first; the other chases
+    final firstBattingTeam = soInn.battingTeamName == teamA.name ? teamA : teamB;
+    final chasingTeam      = soInn.battingTeamName == teamA.name ? teamB : teamA;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Super Over Break',
+      barrierColor: Colors.black.withValues(alpha: 0.85),
+      transitionDuration: const Duration(milliseconds: 500),
+      pageBuilder: (context, anim1, anim2) {
+        return _SuperOverBreakDialog(
+          soFirstInnings : soInn,
+          target         : target,
+          chasingTeam    : chasingTeam,
+          bowlingTeam    : firstBattingTeam,
+        );
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final curve = CurvedAnimation(parent: anim1, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.8, end: 1.0).animate(curve),
+          child: FadeTransition(opacity: anim1, child: child),
+        );
+      },
+    );
+  }
 
   static void _confirmDiscard(BuildContext context) {
     showDialog(
@@ -508,21 +561,32 @@ class _ScoringAppBar extends StatelessWidget {
         // Innings info
         Expanded(
           child: Column(children: [
-            Text(
-              state.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS',
-              style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textMuted,
-                  letterSpacing: 1.5),
-            ),
+            if (state.isSuperOver)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt_rounded, size: 10, color: AppColors.accent),
+                    SizedBox(width: 3),
+                    Text('SUPER OVER', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.accent, letterSpacing: 1.5)),
+                  ],
+                ),
+              )
+            else
+              Text(
+                state.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS',
+                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.textMuted, letterSpacing: 1.5),
+              ),
             const SizedBox(height: 1),
             Text(
               state.currentInnings!.battingTeamName,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
             ),
           ]),
         ),
@@ -591,7 +655,9 @@ class _Scoreboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final inn = state.currentInnings!;
     final total = context.read<MatchBloc>().state.settings?.totalOvers ?? 1;
-    final rem = total * 6 - inn.legalBallsCount;
+    // Super over is always 1 over; use regular totalOvers otherwise
+    final effectiveOvers = state.isSuperOver ? 1 : total;
+    final rem = effectiveOvers * 6 - inn.legalBallsCount;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -688,7 +754,27 @@ class _Scoreboard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _stat('CRR', inn.runRate.toStringAsFixed(2)),
-            if (state.isFirstInnings)
+            if (state.isSuperOver) ...[
+              // Super over: first SO innings shows projected; second shows SO target
+              if (state.isSuperOverFirstInnings)
+                _stat('PROJECTED',
+                    inn.legalBallsCount > 0
+                        ? (inn.totalRuns / inn.legalBallsCount * 6).round().toString()
+                        : '—')
+              else
+                Builder(builder: (ctx) {
+                  final target = (state.superOverFirstInnings?.totalRuns ?? 0) + 1;
+                  final need = target - inn.totalRuns;
+                  final rrr = rem > 0 ? need / (rem / 6) : 0.0;
+                  return Row(children: [
+                    _stat('NEED', '$need'),
+                    const SizedBox(width: 28),
+                    _stat('RRR', rrr.toStringAsFixed(2)),
+                    const SizedBox(width: 28),
+                    _stat('TARGET', '$target'),
+                  ]);
+                }),
+            ] else if (state.isFirstInnings)
               _stat('PROJECTED',
                   inn.legalBallsCount > 0
                       ? (inn.totalRuns / inn.legalBallsCount * total * 6)
@@ -2352,6 +2438,193 @@ class _InningsBreakDialogState extends State<_InningsBreakDialog> with TickerPro
                             'target'         : widget.target,
                           });
                         }
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── SUPER OVER BREAK DIALOG ──────────────────────────────────────────────
+class _SuperOverBreakDialog extends StatefulWidget {
+  final Innings soFirstInnings;
+  final int target;
+  final Team chasingTeam;
+  final Team bowlingTeam;
+
+  const _SuperOverBreakDialog({
+    required this.soFirstInnings,
+    required this.target,
+    required this.chasingTeam,
+    required this.bowlingTeam,
+  });
+
+  @override
+  State<_SuperOverBreakDialog> createState() => _SuperOverBreakDialogState();
+}
+
+class _SuperOverBreakDialogState extends State<_SuperOverBreakDialog> with TickerProviderStateMixin {
+  late AnimationController _introCtrl;
+  late AnimationController _pulseCtrl;
+
+  static const _soGradient = LinearGradient(
+    colors: [Color(0xFF92400E), Color(0xFFB45309), Color(0xFFD97706)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _introCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+    _introCtrl.forward().then((_) {
+      if (mounted) _pulseCtrl.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _introCtrl.dispose();
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final soInn = widget.soFirstInnings;
+    final iconScale   = CurvedAnimation(parent: _introCtrl, curve: const Interval(0.0, 0.6, curve: Curves.elasticOut));
+    final contentFade = CurvedAnimation(parent: _introCtrl, curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic));
+    final slideUp     = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(contentFade);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40, spreadRadius: 10)],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.only(top: 40, bottom: 40, left: 24, right: 24),
+              decoration: const BoxDecoration(gradient: _soGradient),
+              child: Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(right: -40, top: -60, child: Container(width: 120, height: 120, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08)))),
+                  Positioned(left: -40, bottom: -30, child: Container(width: 80, height: 80, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.08)))),
+                  Column(
+                    children: [
+                      ScaleTransition(
+                        scale: iconScale,
+                        child: Container(
+                          width: 80, height: 80,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: AppColors.accent.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 5)],
+                          ),
+                          child: const Icon(Icons.bolt_rounded, color: AppColors.accent, size: 40),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      FadeTransition(
+                        opacity: contentFade,
+                        child: SlideTransition(
+                          position: slideUp,
+                          child: Column(
+                            children: [
+                              const Text('SUPER OVER', style: TextStyle(fontSize: 12, letterSpacing: 4, color: Colors.white70, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 16),
+                              Text(soInn.battingTeamName, style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${soInn.totalRuns}/${soInn.totalWickets}',
+                                style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: Colors.white, height: 1.0, letterSpacing: -1),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              Text('(${soInn.overDisplay} over)', style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Target ──
+            FadeTransition(
+              opacity: contentFade,
+              child: SlideTransition(
+                position: slideUp,
+                child: Container(
+                  width: double.infinity,
+                  color: AppColors.surface,
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      const Text('TARGET SET', style: TextStyle(color: AppColors.textMuted, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 3.0)),
+                      const SizedBox(height: 16),
+                      AnimatedBuilder(
+                        animation: _pulseCtrl,
+                        builder: (context, child) {
+                          final pulse = Curves.easeInOut.transform(_pulseCtrl.value);
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceLight,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.accent.withValues(alpha: 0.3 + (pulse * 0.4)), width: 2),
+                              boxShadow: [BoxShadow(color: AppColors.accent.withValues(alpha: 0.1 + (pulse * 0.1)), blurRadius: 20 + (pulse * 10), spreadRadius: pulse * 2)],
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '${widget.target}',
+                                  style: TextStyle(
+                                    fontSize: 64, fontWeight: FontWeight.w900, color: AppColors.accent, height: 1.0,
+                                    shadows: [Shadow(color: AppColors.accent.withValues(alpha: 0.3 * pulse), blurRadius: 10 * pulse)],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text('RUNS TO WIN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 4, color: AppColors.textSecondary)),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      Text('Chasing: ${widget.chasingTeam.name}', style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 32),
+                      _DialogSwipeToStart(
+                        text: 'SWIPE TO BAT',
+                        onSwipe: () {
+                          Navigator.pop(context);
+                          context.push('/match/super-over/opening', extra: {
+                            'battingTeam' : widget.chasingTeam,
+                            'bowlingTeam' : widget.bowlingTeam,
+                            'target'      : widget.target,
+                          });
+                        },
                       ),
                     ],
                   ),

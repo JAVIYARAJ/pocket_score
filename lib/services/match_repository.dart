@@ -181,6 +181,11 @@ class MatchRepository {
       processInnings(firstInnings,  1);
       processInnings(secondInnings, 2);
 
+      final superOverFirstInnings  = parseInnings(scoreJson['superOverFirstInnings']);
+      final superOverSecondInnings = parseInnings(scoreJson['superOverSecondInnings']);
+      processInnings(superOverFirstInnings,  3);
+      processInnings(superOverSecondInnings, 4);
+
       if (rows.isNotEmpty) {
         await _client.rpc('upsert_player_match_stats', params: {'p_stats': rows});
       }
