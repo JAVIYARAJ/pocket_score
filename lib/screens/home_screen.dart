@@ -757,9 +757,10 @@ class _LiveBannerState extends State<_LiveBanner> {
 
   void _watchLive(BuildContext context) {
     context.push('/live/${widget.match.id}', extra: {
-      'teamAName': widget.match.teamAName,
-      'teamBName': widget.match.teamBName,
-      'totalOvers': widget.match.totalOvers,
+      'teamAName'    : widget.match.teamAName,
+      'teamBName'    : widget.match.teamBName,
+      'totalOvers'   : widget.match.totalOvers,
+      'powerPlayOvers': widget.match.powerPlayOvers,
     });
   }
 
@@ -1373,9 +1374,10 @@ class _MatchCard extends StatelessWidget {
         if (isLive) {
           // Open the detailed live view (same Cricbuzz-style screen as group)
           context.push('/live/${match.id}', extra: {
-            'teamAName' : match.teamAName,
-            'teamBName' : match.teamBName,
-            'totalOvers': match.totalOvers,
+            'teamAName'     : match.teamAName,
+            'teamBName'     : match.teamBName,
+            'totalOvers'    : match.totalOvers,
+            'powerPlayOvers': match.powerPlayOvers,
           });
         } else if (isDone && match.scoreData != null) {
           try {

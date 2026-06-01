@@ -31,16 +31,12 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
   final _teamAController = TextEditingController();
   final _teamBController = TextEditingController();
   final ValueNotifier<int>    _oversNotifier              = ValueNotifier<int>(5);
-  final ValueNotifier<bool>   _maxOversEnabledNotifier    = ValueNotifier<bool>(false);
-  final ValueNotifier<int>    _maxOversPerBowlerNotifier  = ValueNotifier<int>(2);
   final ValueNotifier<String?> _selectedGroupIdNotifier  = ValueNotifier<String?>(null);
   List<Group> _myGroups = [];
 
   @override
   void dispose() {
     _oversNotifier.dispose();
-    _maxOversEnabledNotifier.dispose();
-    _maxOversPerBowlerNotifier.dispose();
     _selectedGroupIdNotifier.dispose();
     _teamAController.dispose();
     _teamBController.dispose();
@@ -54,9 +50,6 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
     _teamAController.text = ms.settings?.teamAName ?? 'Team A';
     _teamBController.text = ms.settings?.teamBName ?? 'Team B';
     _oversNotifier.value = ms.settings?.totalOvers ?? 5;
-    final limit = ms.settings?.maxOversPerBowler;
-    _maxOversEnabledNotifier.value   = limit != null;
-    _maxOversPerBowlerNotifier.value = limit ?? 2;
 
     _myGroups = context.read<GroupBloc>().state.groups;
 
@@ -73,13 +66,10 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
     if (_formKey.currentState!.validate()) {
       final matchId = DateTime.now().millisecondsSinceEpoch.toString();
       final settings = MatchSettings(
-        teamAName         : _teamAController.text.trim(),
-        teamBName         : _teamBController.text.trim(),
-        totalOvers        : _oversNotifier.value,
-        groupId           : _selectedGroupIdNotifier.value,
-        maxOversPerBowler : _maxOversEnabledNotifier.value
-            ? _maxOversPerBowlerNotifier.value
-            : null,
+        teamAName  : _teamAController.text.trim(),
+        teamBName  : _teamBController.text.trim(),
+        totalOvers : _oversNotifier.value,
+        groupId    : _selectedGroupIdNotifier.value,
       );
       // Store match settings in memory only.
       // The database record is created only after the user confirms at the
@@ -274,18 +264,6 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
                           ),
                         ),
                       ),
-                      // Max overs per bowler
-                      const SizedBox(height: 16),
-                      FadeInEntrance(
-                        delay: const Duration(milliseconds: 300),
-                        offset: const Offset(0, 20),
-                        child: _MaxOversPerBowlerCard(
-                          enabledNotifier: _maxOversEnabledNotifier,
-                          limitNotifier  : _maxOversPerBowlerNotifier,
-                          oversNotifier  : _oversNotifier,
-                        ),
-                      ),
-
                       // Group selector (only shown when user has groups)
                       if (_myGroups.isNotEmpty) ...[
                         const SizedBox(height: 16),
@@ -678,134 +656,5 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
             ),
           );
         });
-  }
-}
-
-// ── Max Overs Per Bowler card ────────────────────────────────────────────────
-class _MaxOversPerBowlerCard extends StatelessWidget {
-  final ValueNotifier<bool> enabledNotifier;
-  final ValueNotifier<int>  limitNotifier;
-  final ValueNotifier<int>  oversNotifier;
-
-  const _MaxOversPerBowlerCard({
-    required this.enabledNotifier,
-    required this.limitNotifier,
-    required this.oversNotifier,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: enabledNotifier,
-      builder: (context, enabled, _) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: AppDecorations.card(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Toggle row
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: AppColors.info.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.shield_rounded, size: 16, color: AppColors.info),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Max Overs Per Bowler',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                  ),
-                  Switch(
-                    value: enabled,
-                    onChanged: (v) => enabledNotifier.value = v,
-                    activeThumbColor: AppColors.primary,
-                    activeTrackColor: AppColors.primaryLight,
-                  ),
-                ],
-              ),
-
-              // Number picker — only visible when enabled
-              if (enabled) ...[
-                const SizedBox(height: 16),
-                ValueListenableBuilder<int>(
-                  valueListenable: limitNotifier,
-                  builder: (context, limit, _) {
-                    return ValueListenableBuilder<int>(
-                      valueListenable: oversNotifier,
-                      builder: (context, totalOvers, _) {
-                        return Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _stepBtn(Icons.remove_rounded, () {
-                                  if (limit > 1) limitNotifier.value--;
-                                }),
-                                SizedBox(
-                                  width: 120,
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        '$limit',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          fontSize: 48,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.info,
-                                          height: 1,
-                                        ),
-                                      ),
-                                      const Text(
-                                        'overs / bowler',
-                                        style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                _stepBtn(Icons.add_rounded, () {
-                                  if (limit < totalOvers) limitNotifier.value++;
-                                }),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Each bowler can bowl at most $limit over${limit > 1 ? "s" : ""}',
-                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w500),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _stepBtn(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Icon(icon, size: 22, color: AppColors.textSecondary),
-      ),
-    );
   }
 }

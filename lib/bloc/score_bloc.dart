@@ -342,7 +342,9 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         );
       }
       emit(next);
-      _pushLiveScore(next);
+      // Skip live score push for first innings: upsert_match is still in-flight
+      // (race condition). The match will be in DB before the first RecordBall push.
+      if (event.target != 0) _pushLiveScore(next);
     });
 
     on<StartSuperOverInnings>((event, emit) {

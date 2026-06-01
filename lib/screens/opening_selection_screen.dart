@@ -110,6 +110,7 @@ class _OpeningSelectionScreenState extends State<OpeningSelectionScreen> {
       createdAt         : DateTime.now(),
       groupId           : ms.settings?.groupId,
       maxOversPerBowler : ms.settings?.maxOversPerBowler,
+      powerPlayOvers    : ms.settings?.powerPlayOvers,
     )));
 
     // 2. Register match ID so every ball publishes a live score.

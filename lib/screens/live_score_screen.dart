@@ -22,6 +22,7 @@ class LiveScoreScreen extends StatefulWidget {
   final String teamAName;
   final String teamBName;
   final int    totalOvers;
+  final int?   powerPlayOvers;
 
   const LiveScoreScreen({
     super.key,
@@ -29,6 +30,7 @@ class LiveScoreScreen extends StatefulWidget {
     required this.teamAName,
     required this.teamBName,
     this.totalOvers = 0,
+    this.powerPlayOvers,
   });
 
   @override
@@ -130,7 +132,7 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
     } else {
       try {
         final score = ScoreState.fromJson(_scoreData!);
-        body = _LiveBody(score: score, totalOvers: widget.totalOvers);
+        body = _LiveBody(score: score, totalOvers: widget.totalOvers, powerPlayOvers: widget.powerPlayOvers);
       } catch (_) {
         body = const _ErrorView(message: 'Could not parse score data.');
       }
@@ -219,7 +221,8 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
 class _LiveBody extends StatelessWidget {
   final ScoreState score;
   final int        totalOvers;
-  const _LiveBody({required this.score, this.totalOvers = 0});
+  final int?       powerPlayOvers;
+  const _LiveBody({required this.score, this.totalOvers = 0, this.powerPlayOvers});
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   String _name(List<dynamic> players, String? id) {
@@ -290,6 +293,8 @@ class _LiveBody extends StatelessWidget {
     final legalBalls     = innings.legalBallsCount;
     // Super over is always 1 over (6 balls); regular match uses totalOvers setting
     final effectiveOvers = isSuperOver ? 1 : totalOvers;
+    final inPowerPlay    = !isSuperOver && powerPlayOvers != null &&
+        innings.legalBallsCount ~/ 6 < powerPlayOvers!;
     final ballsRemaining = (effectiveOvers * 6) - legalBalls;
     final rrr = (isChasing && ballsRemaining > 0)
         ? (runsNeeded / ballsRemaining) * 6
@@ -329,7 +334,7 @@ class _LiveBody extends StatelessWidget {
             ),
             child: Column(
               children: [
-                // Innings label
+                // Innings label + optional Power Play badge
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -357,6 +362,27 @@ class _LiveBody extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (inPowerPlay) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.security_rounded, size: 10, color: Colors.white),
+                            SizedBox(width: 4),
+                            Text('POWER PLAY',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800,
+                                    color: Colors.white, letterSpacing: 1.5)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),

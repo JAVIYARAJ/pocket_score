@@ -75,9 +75,9 @@ class TeamPreviewScreen extends StatelessWidget {
                     boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
                   ),
                   child: ElevatedButton.icon(
-                    onPressed: () => context.push('/match/toss'),
-                    icon: const Icon(Icons.sports_cricket_rounded, size: 20),
-                    label: const Text('Looks Good — Start Match!', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    onPressed: () => context.push('/match/rules'),
+                    icon: const Icon(Icons.rule_rounded, size: 20),
+                    label: const Text('Confirm Lineups & Set Rules', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
                       backgroundColor: Colors.transparent,

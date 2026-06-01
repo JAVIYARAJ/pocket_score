@@ -34,6 +34,16 @@ class PerformToss extends MatchEvent {
 
 class ResetMatch extends MatchEvent {}
 
+/// Updates only the optional match rules (max overs per bowler, power play).
+/// Called from the rules screen after team selection.
+class UpdateMatchSettings extends MatchEvent {
+  final int? maxOversPerBowler;
+  final int? powerPlayOvers;
+  UpdateMatchSettings({this.maxOversPerBowler, this.powerPlayOvers});
+  @override
+  List<Object?> get props => [maxOversPerBowler, powerPlayOvers];
+}
+
 /// Reconstructs MatchBloc state from a persisted MatchSummary (used when resuming a session after app restart).
 class RestoreMatch extends MatchEvent {
   final MatchSummary match;
@@ -135,6 +145,24 @@ class MatchBloc extends Bloc<MatchEvent, MatchState> {
       ));
     });
 
+    on<UpdateMatchSettings>((event, emit) {
+      final s = state.settings;
+      if (s == null) return;
+      // Rebuild settings directly so null values properly clear the fields
+      // (copyWith with ?? would preserve old values when null is passed)
+      emit(state.copyWith(
+        settings: MatchSettings(
+          totalOvers        : s.totalOvers,
+          teamAName         : s.teamAName,
+          teamBName         : s.teamBName,
+          groupId           : s.groupId,
+          tournamentId      : s.tournamentId,
+          maxOversPerBowler : event.maxOversPerBowler,
+          powerPlayOvers    : event.powerPlayOvers,
+        ),
+      ));
+    });
+
     on<ResetMatch>((event, emit) {
       emit(const MatchState());
     });
@@ -149,6 +177,7 @@ class MatchBloc extends Bloc<MatchEvent, MatchState> {
           teamBName         : m.teamBName,
           groupId           : m.groupId,
           maxOversPerBowler : m.maxOversPerBowler,
+          powerPlayOvers    : m.powerPlayOvers,
         ),
         teamA: m.teamA,
         teamB: m.teamB,

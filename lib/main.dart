@@ -38,6 +38,7 @@ import 'screens/team_selection_screen.dart';
 import 'screens/team_preview_screen.dart';
 import 'screens/toss_screen.dart';
 import 'screens/opening_selection_screen.dart';
+import 'screens/match_rules_screen.dart';
 import 'screens/super_over_opening_screen.dart';
 import 'screens/scoring_screen.dart';
 import 'screens/result_screen.dart';
@@ -198,6 +199,7 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
             );
           },
         ),
+        GoRoute(path: '/match/rules', builder: (_, __) => const MatchRulesScreen()),
         GoRoute(path: '/match/toss', builder: (_, __) => const TossScreen()),
         GoRoute(
           path: '/match/opening',
@@ -230,10 +232,11 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           builder: (context, state) {
             final extra = state.extra! as Map<String, dynamic>;
             return LiveScoreScreen(
-              matchId   : state.pathParameters['matchId']!,
-              teamAName : extra['teamAName']  as String,
-              teamBName : extra['teamBName']  as String,
-              totalOvers: (extra['totalOvers'] as int?) ?? 0,
+              matchId       : state.pathParameters['matchId']!,
+              teamAName     : extra['teamAName']  as String,
+              teamBName     : extra['teamBName']  as String,
+              totalOvers    : (extra['totalOvers']     as int?) ?? 0,
+              powerPlayOvers: extra['powerPlayOvers']  as int?,
             );
           },
         ),

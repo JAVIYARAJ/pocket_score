@@ -946,9 +946,10 @@ class _GroupMatchCard extends StatelessWidget {
       onTap: () {
         if (isLive) {
           context.push('/live/${match.id}', extra: {
-            'teamAName' : match.teamAName,
-            'teamBName' : match.teamBName,
-            'totalOvers': match.totalOvers,
+            'teamAName'     : match.teamAName,
+            'teamBName'     : match.teamBName,
+            'totalOvers'    : match.totalOvers,
+            'powerPlayOvers': match.powerPlayOvers,
           });
         } else if (isCompleted && match.scoreData != null) {
           context.push('/scorecard', extra: {

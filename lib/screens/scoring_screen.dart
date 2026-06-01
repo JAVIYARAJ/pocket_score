@@ -1,3 +1,4 @@
+import 'dart:math' show max;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -110,22 +111,24 @@ class ScoringScreen extends StatelessWidget {
       }
     }
     context.read<MatchListBloc>().add(UpdateMatchInList(MatchSummary(
-      id          : ms.matchId!,
-      teamAName   : aName,
-      teamBName   : bName,
-      teamA       : ms.teamA,
-      teamB       : ms.teamB,
-      totalOvers  : ms.settings?.totalOvers ?? 0,
-      status      : done ? 'completed' : 'in_progress',
-      createdAt   : DateTime.now(),
-      teamAScore  : aScore,
-      teamAWickets: aWkts,
-      teamAOvers  : aOv,
-      teamBScore  : bScore,
-      teamBWickets: bWkts,
-      teamBOvers  : bOv,
-      scoreData   : state.toJson(),
-      groupId     : ms.settings?.groupId, // preserve group association on every update
+      id                : ms.matchId!,
+      teamAName         : aName,
+      teamBName         : bName,
+      teamA             : ms.teamA,
+      teamB             : ms.teamB,
+      totalOvers        : ms.settings?.totalOvers ?? 0,
+      status            : done ? 'completed' : 'in_progress',
+      createdAt         : DateTime.now(),
+      teamAScore        : aScore,
+      teamAWickets      : aWkts,
+      teamAOvers        : aOv,
+      teamBScore        : bScore,
+      teamBWickets      : bWkts,
+      teamBOvers        : bOv,
+      scoreData         : state.toJson(),
+      groupId           : ms.settings?.groupId,
+      maxOversPerBowler : ms.settings?.maxOversPerBowler,
+      powerPlayOvers    : ms.settings?.powerPlayOvers,
       result      : done
           ? (second.totalRuns > first!.totalRuns
               ? '${second.battingTeamName} won'
@@ -387,23 +390,25 @@ class ScoringScreen extends StatelessWidget {
     }
 
     context.read<MatchListBloc>().add(UpdateMatchInList(MatchSummary(
-      id          : ms.matchId!,
-      teamAName   : aName,
-      teamBName   : bName,
-      teamA       : ms.teamA,
-      teamB       : ms.teamB,
-      totalOvers  : ms.settings?.totalOvers ?? 0,
-      status      : 'completed',
-      createdAt   : DateTime.now(),
-      teamAScore  : aScore,
-      teamAWickets: aWkts,
-      teamAOvers  : aOv,
-      teamBScore  : bScore,
-      teamBWickets: bWkts,
-      teamBOvers  : bOv,
-      scoreData   : state.toJson(),
-      groupId     : ms.settings?.groupId,
-      result      : result,
+      id                : ms.matchId!,
+      teamAName         : aName,
+      teamBName         : bName,
+      teamA             : ms.teamA,
+      teamB             : ms.teamB,
+      totalOvers        : ms.settings?.totalOvers ?? 0,
+      status            : 'completed',
+      createdAt         : DateTime.now(),
+      teamAScore        : aScore,
+      teamAWickets      : aWkts,
+      teamAOvers        : aOv,
+      teamBScore        : bScore,
+      teamBWickets      : bWkts,
+      teamBOvers        : bOv,
+      scoreData         : state.toJson(),
+      groupId           : ms.settings?.groupId,
+      maxOversPerBowler : ms.settings?.maxOversPerBowler,
+      powerPlayOvers    : ms.settings?.powerPlayOvers,
+      result            : result,
     )));
 
     context.push('/match/result');
@@ -657,10 +662,13 @@ class _Scoreboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inn = state.currentInnings!;
-    final total = context.read<MatchBloc>().state.settings?.totalOvers ?? 1;
+    final matchSettings = context.read<MatchBloc>().state.settings;
+    final total = matchSettings?.totalOvers ?? 1;
     // Super over is always 1 over; use regular totalOvers otherwise
     final effectiveOvers = state.isSuperOver ? 1 : total;
     final rem = effectiveOvers * 6 - inn.legalBallsCount;
+    final ppOvers = state.isSuperOver ? null : matchSettings?.powerPlayOvers;
+    final inPowerPlay = ppOvers != null && inn.legalBallsCount ~/ 6 < ppOvers;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -738,6 +746,30 @@ class _Scoreboard extends StatelessWidget {
                 Icon(Icons.lock_open_rounded, size: 13, color: Colors.white),
                 SizedBox(width: 6),
                 Text('FREE HIT',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 1)),
+              ]),
+            ),
+          ),
+        ],
+        // Power Play badge
+        if (inPowerPlay) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.info,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.security_rounded, size: 13, color: Colors.white),
+                SizedBox(width: 6),
+                Text('POWER PLAY',
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -1658,13 +1690,32 @@ class _BowlerPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bowlers   = state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
-    final maxOv     = context.read<MatchBloc>().state.settings?.maxOversPerBowler;
-    final bowlStats = state.currentInnings?.bowlerStatsMap ?? {};
+    final bowlers      = state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
+    final settings     = context.read<MatchBloc>().state.settings;
+    final configuredMax = settings?.maxOversPerBowler;
+    final bowlStats    = state.currentInnings?.bowlerStatsMap ?? {};
 
-    // If every candidate has hit the limit, allow override so the game can continue
-    final allAtLimit = maxOv != null && bowlers.every(
-        (p) => (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6 >= maxOv);
+    // ── Intelligent effective max ──────────────────────────────────────────
+    // If the bowling lineup is too small to cover all overs within the
+    // configured limit, auto-extend the limit so the game is never stuck.
+    // effectiveMax = max(configuredMax, ceil(totalOvers / totalBowlers))
+    int? effectiveMax;
+    bool limitAutoAdjusted = false;
+    if (configuredMax != null && !state.isSuperOver) {
+      final totalOvers   = settings?.totalOvers ?? 1;
+      final totalBowlers = state.bowlingLineup.length;
+      if (totalBowlers > 0) {
+        final minRequired = (totalOvers + totalBowlers - 1) ~/ totalBowlers; // ceil
+        effectiveMax       = max(configuredMax, minRequired);
+        limitAutoAdjusted  = effectiveMax > configuredMax;
+      } else {
+        effectiveMax = configuredMax;
+      }
+    }
+
+    // All candidates exhausted their effective limit (should never permanently block)
+    final allAtLimit = effectiveMax != null && bowlers.every(
+        (p) => (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6 >= effectiveMax!);
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -1699,7 +1750,32 @@ class _BowlerPicker extends StatelessWidget {
                   color: AppColors.textPrimary)),
         ),
 
-        // All-at-limit override warning
+        // Auto-adjusted limit notice
+        if (limitAutoAdjusted) ...[
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.info.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.auto_fix_high_rounded, size: 14, color: AppColors.info),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Limit auto-adjusted to $effectiveMax ov/bowler '
+                  '(${state.bowlingLineup.length} bowlers, ${settings?.totalOvers} overs needed)',
+                  style: const TextStyle(fontSize: 11, color: AppColors.info, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ]),
+          ),
+        ],
+
+        // All-at-limit override banner (rare edge case)
         if (allAtLimit) ...[
           const SizedBox(height: 10),
           Container(
@@ -1715,7 +1791,7 @@ class _BowlerPicker extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'All bowlers have reached the $maxOv-over limit. Override to continue.',
+                  'All bowlers at $effectiveMax-over limit — tap any to override.',
                   style: const TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -1732,14 +1808,15 @@ class _BowlerPicker extends StatelessWidget {
             itemBuilder: (ctx, i) {
               final p         = bowlers[i];
               final oversUsed = (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6;
-              final atLimit   = maxOv != null && oversUsed >= maxOv && !allAtLimit;
+              final atLimit   = effectiveMax != null &&
+                  oversUsed >= effectiveMax && !allAtLimit;
 
               return GestureDetector(
                 onTap: atLimit
                     ? () {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                           content: Text(
-                            '${p.name} has bowled $oversUsed/$maxOv overs — limit reached',
+                            '${p.name} has bowled $oversUsed/$effectiveMax overs — limit reached',
                           ),
                           duration: const Duration(seconds: 2),
                           behavior: SnackBarBehavior.floating,
@@ -1770,10 +1847,10 @@ class _BowlerPicker extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center),
-                      if (maxOv != null) ...[
+                      if (effectiveMax != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          '$oversUsed/$maxOv ov',
+                          '$oversUsed/$effectiveMax ov',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,

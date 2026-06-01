@@ -217,6 +217,7 @@ class MatchRepository {
     scoreData    : r['score_data'] != null ? Map<String, dynamic>.from(r['score_data'] as Map) : null,
     groupId           : r['group_id'] as String?,
     maxOversPerBowler : r['max_overs_per_bowler'] as int?,
+    powerPlayOvers    : r['power_play_overs'] as int?,
   );
 
   Map<String, dynamic> _toJson(MatchSummary m) => {
@@ -237,5 +238,6 @@ class MatchRepository {
     'score_data'     : m.scoreData,
     'group_id'            : m.groupId,
     'max_overs_per_bowler': m.maxOversPerBowler,
+    'power_play_overs'    : m.powerPlayOvers,
   };
 }
