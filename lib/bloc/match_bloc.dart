@@ -1,4 +1,4 @@
-import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/match_models.dart';
 
@@ -33,6 +33,14 @@ class PerformToss extends MatchEvent {
 }
 
 class ResetMatch extends MatchEvent {}
+
+/// Reconstructs MatchBloc state from a persisted MatchSummary (used when resuming a session after app restart).
+class RestoreMatch extends MatchEvent {
+  final MatchSummary match;
+  RestoreMatch(this.match);
+  @override
+  List<Object?> get props => [match.id];
+}
 
 // State
 enum MatchStatus { setup, teamsSelected, tossDone, inProgress, finished }
@@ -101,7 +109,7 @@ class MatchState extends Equatable {
 }
 
 // Bloc
-class MatchBloc extends HydratedBloc<MatchEvent, MatchState> {
+class MatchBloc extends Bloc<MatchEvent, MatchState> {
   MatchBloc() : super(const MatchState()) {
     on<CreateMatch>((event, emit) {
       emit(state.copyWith(
@@ -130,13 +138,22 @@ class MatchBloc extends HydratedBloc<MatchEvent, MatchState> {
     on<ResetMatch>((event, emit) {
       emit(const MatchState());
     });
+
+    on<RestoreMatch>((event, emit) {
+      final m = event.match;
+      emit(MatchState(
+        matchId: m.id,
+        settings: MatchSettings(
+          totalOvers: m.totalOvers,
+          teamAName: m.teamAName,
+          teamBName: m.teamBName,
+          groupId: m.groupId,
+        ),
+        teamA: m.teamA,
+        teamB: m.teamB,
+        status: MatchStatus.inProgress,
+      ));
+    });
   }
 
-  @override
-  MatchState? fromJson(Map<String, dynamic> json) {
-    try { return MatchState.fromJson(json); } catch (_) { return null; }
-  }
-
-  @override
-  Map<String, dynamic>? toJson(MatchState state) => state.toJson();
 }

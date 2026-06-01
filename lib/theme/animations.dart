@@ -132,25 +132,27 @@ class AnimatedCounter extends StatelessWidget {
     super.key,
     required this.value,
     this.style,
-    this.duration = const Duration(milliseconds: 350),
+    this.duration = const Duration(milliseconds: 200),
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
       duration: duration,
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeIn,
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (Widget child, Animation<double> animation) {
-        final isEntering = child.key == ValueKey<int>(value);
         return FadeTransition(
           opacity: animation,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: Offset(0, isEntering ? 0.5 : -0.5),
+              begin: const Offset(0, 0.3),
               end: Offset.zero,
             ).animate(animation),
-            child: child,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.7, end: 1.0).animate(animation),
+              child: child,
+            ),
           ),
         );
       },
@@ -333,7 +335,9 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                   child: Transform.scale(
                     scale: _scale.value,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                      width: 280,
+                      height: 125,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
@@ -352,21 +356,23 @@ class _ScoreCelebrationState extends State<ScoreCelebration> with TickerProvider
                         border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
                       ),
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
                             widget.text,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 48,
+                              fontSize: 38,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: 4,
+                              letterSpacing: 2,
                               shadows: [Shadow(color: Colors.black26, offset: Offset(0, 4), blurRadius: 8)],
                             ),
                           ),
                           Container(
                             margin: const EdgeInsets.only(top: 8),
-                            height: 3, width: 60,
+                            height: 3, width: 45,
                             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2)),
                           ),
                         ],

@@ -1,13 +1,13 @@
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/score_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/match_list_bloc.dart';
+import '../models/innings_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/scorecard_widget.dart';
-
-import '../main.dart';
 
 class ResultScreen extends StatefulWidget {
   const ResultScreen({super.key});
@@ -18,16 +18,17 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-
   late Animation<double> _fade;
-  late ScoreState _savedState; // Save before reset
+  late Animation<double> _slideUp;
+  late ScoreState _savedState;
 
   @override
   void initState() {
     super.initState();
     _savedState = context.read<ScoreBloc>().state;
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _fade = CurvedAnimation(parent: _ctrl, curve: const Interval(0.3, 1.0, curve: Curves.easeOut));
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _fade   = CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0, curve: Curves.easeOut));
+    _slideUp = CurvedAnimation(parent: _ctrl, curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic));
     _ctrl.forward();
     _finalize();
   }
@@ -36,7 +37,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   void dispose() { _ctrl.dispose(); super.dispose(); }
 
   void _finalize() {
-    final first = _savedState.firstInnings;
+    final first  = _savedState.firstInnings;
     final second = _savedState.secondInnings;
     if (first == null || second == null) return;
 
@@ -56,17 +57,16 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
       final ex = ml.where((m) => m.id == matchId).firstOrNull;
       if (ex != null) {
         final matchState = context.read<MatchBloc>().state;
-        // Save with full score data for scorecard viewing later
-        final scoreJson = _savedState.copyWith(history: const []).toJson();
+        final scoreJson  = _savedState.copyWith(history: const []).toJson();
         final String teamAName = ex.teamAName;
         int? teamAScore, teamAWickets, teamBScore, teamBWickets;
         String? teamAOvers, teamBOvers;
 
         if (first.battingTeamName == teamAName) {
-          teamAScore = first.totalRuns; teamAWickets = first.totalWickets; teamAOvers = first.overDisplay;
+          teamAScore = first.totalRuns;  teamAWickets = first.totalWickets;  teamAOvers = first.overDisplay;
           teamBScore = second.totalRuns; teamBWickets = second.totalWickets; teamBOvers = second.overDisplay;
         } else {
-          teamBScore = first.totalRuns; teamBWickets = first.totalWickets; teamBOvers = first.overDisplay;
+          teamBScore = first.totalRuns;  teamBWickets = first.totalWickets;  teamBOvers = first.overDisplay;
           teamAScore = second.totalRuns; teamAWickets = second.totalWickets; teamAOvers = second.overDisplay;
         }
 
@@ -85,128 +85,269 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   void _goHome() {
     context.read<MatchBloc>().add(ResetMatch());
     context.read<ScoreBloc>().add(ResetScoreboard());
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const AppEntryPoint()), (r) => false);
+    context.go('/home');
   }
 
   void _viewScorecard() {
-    ScorecardView.showAsBottomSheet(context, _savedState);
+    context.push('/scorecard', extra: _savedState);
   }
 
   @override
   Widget build(BuildContext context) {
-    final first = _savedState.firstInnings;
+    final first  = _savedState.firstInnings;
     final second = _savedState.secondInnings;
     if (first == null || second == null) {
-      return Scaffold(body: Center(child: ElevatedButton(onPressed: _goHome, child: const Text('Go Home'))));
+      return Scaffold(
+        body: Center(child: ElevatedButton(onPressed: _goHome, child: const Text('Go Home'))),
+      );
     }
 
-    String winnerText;
+    // Build result strings
+    String winnerTeam;
+    String winnerSubtext;
     bool isTie = false;
     if (second.totalRuns > first.totalRuns) {
       final w = _savedState.battingLineup.length - 1 - second.totalWickets;
-      winnerText = '${second.battingTeamName} won by $w wicket${w != 1 ? "s" : ""}!';
+      winnerTeam   = second.battingTeamName;
+      winnerSubtext = 'won by $w wicket${w != 1 ? "s" : ""}';
     } else if (second.totalRuns < first.totalRuns) {
-      winnerText = '${first.battingTeamName} won by ${first.totalRuns - second.totalRuns} runs!';
+      winnerTeam    = first.battingTeamName;
+      winnerSubtext = 'won by ${first.totalRuns - second.totalRuns} runs';
     } else {
-      winnerText = "It's a TIE!";
+      winnerTeam    = 'TIE';
+      winnerSubtext = "Both teams level!";
       isTie = true;
     }
 
-    return Scaffold(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(),
-
-              // Trophy
-              ScaleEntrance(
-                delay: const Duration(milliseconds: 200),
-                startScale: 0.0,
-                child: Container(
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: isTie ? AppColors.scoreGradient : AppColors.successGradient,
-                    boxShadow: [BoxShadow(color: (isTie ? AppColors.primary : AppColors.success).withValues(alpha: 0.3), blurRadius: 40)],
-                  ),
-                  child: const Icon(Icons.emoji_events, size: 64, color: Colors.white),
-                ),
+      body: Column(
+        children: [
+          // ── Gradient Header ──────────────────────────────────────
+          _ResultHeader(
+            ctrl        : _ctrl,
+            winnerTeam  : winnerTeam,
+            winnerSubtext: winnerSubtext,
+            isTie       : isTie,
+          ),
+          // ── Body ─────────────────────────────────────────────────
+          Expanded(
+            child: AnimatedBuilder(
+              animation: _slideUp,
+              builder: (_, child) => Transform.translate(
+                offset: Offset(0, 24 * (1 - _slideUp.value)),
+                child: Opacity(opacity: _slideUp.value.clamp(0.0, 1.0), child: child),
               ),
-              const SizedBox(height: 28),
-
-              FadeInEntrance(
-                delay: const Duration(milliseconds: 300),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
                 child: Column(
                   children: [
-                    const Text('MATCH FINISHED', style: TextStyle(fontSize: 14, letterSpacing: 2, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                    // Score comparison
+                    _ScoreCard(first: first, second: second),
+                    const SizedBox(height: 32),
+
+                    // Scorecard button
+                    FadeTransition(
+                      opacity: _fade,
+                      child: OutlinedButton.icon(
+                        onPressed: _viewScorecard,
+                        icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                        label: const Text('View Full Scorecard'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: AppColors.primary, width: 1.5),
+                          foregroundColor: AppColors.primary,
+                          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Text(winnerText, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary, height: 1.2)),
+
+                    // Home button (gradient)
+                    FadeTransition(
+                      opacity: _fade,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.35),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          )],
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: _goHome,
+                          icon: const Icon(Icons.home_rounded, size: 18),
+                          label: const Text('Back to Home'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52),
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+      ), // Scaffold
+    );   // AnnotatedRegion
+  }
+}
 
-              const SizedBox(height: 36),
+// ── Gradient result header ─────────────────────────────────────────
+class _ResultHeader extends StatelessWidget {
+  final AnimationController ctrl;
+  final String winnerTeam;
+  final String winnerSubtext;
+  final bool isTie;
 
-              // Score comparison
-              FadeInEntrance(
-                delay: const Duration(milliseconds: 500),
-                offset: const Offset(0, 30),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: AppDecorations.glassCard(opacity: 0.06),
-                  child: Row(
-                    children: [
-                      Expanded(child: _scoreCol(first.battingTeamName, first.totalRuns, first.totalWickets, first.overDisplay)),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(color: AppColors.surfaceLight, borderRadius: BorderRadius.circular(10)),
-                        child: const Text('VS', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textMuted, fontSize: 12)),
-                      ),
-                      Expanded(child: _scoreCol(second.battingTeamName, second.totalRuns, second.totalWickets, second.overDisplay)),
-                    ],
+  const _ResultHeader({
+    required this.ctrl,
+    required this.winnerTeam,
+    required this.winnerSubtext,
+    required this.isTie,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(20, topPad + 20, 20, 40),
+      decoration: const BoxDecoration(
+        gradient: AppColors.headerGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          // Trophy / tie icon
+          ScaleEntrance(
+            delay: const Duration(milliseconds: 50),
+            startScale: 0.0,
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: isTie ? AppColors.scoreGradient : AppColors.goldGradient,
+                boxShadow: [BoxShadow(
+                  color: (isTie ? AppColors.scoreBlue : AppColors.accent).withValues(alpha: 0.55),
+                  blurRadius: 28,
+                  spreadRadius: 4,
+                )],
+              ),
+              child: Icon(
+                isTie ? Icons.handshake_rounded : Icons.emoji_events_rounded,
+                size: 44,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Text content
+          FadeInEntrance(
+            delay: const Duration(milliseconds: 200),
+            child: Column(
+              children: [
+                const Text(
+                  'MATCH RESULT',
+                  style: TextStyle(fontSize: 11, letterSpacing: 3, color: Colors.white60, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  isTie ? "It's a Tie!" : winnerTeam,
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, height: 1.1),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
                   ),
+                  child: Text(
+                    isTie ? 'Both teams level!' : winnerSubtext,
+                    style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Innings score comparison card ─────────────────────────────────
+class _ScoreCard extends StatelessWidget {
+  final Innings first;
+  final Innings second;
+
+  const _ScoreCard({required this.first, required this.second});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: AppDecorations.card(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header
+          Row(
+            children: [
+              Container(
+                width: 3, height: 14,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
-              const Spacer(),
-
-              // View Scorecard button
-              FadeTransition(
-                opacity: _fade,
-                child: OutlinedButton.icon(
-                  onPressed: _viewScorecard,
-                  icon: const Icon(Icons.assessment, size: 18),
-                  label: const Text('View Full Scorecard', style: TextStyle(fontSize: 15)),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
-                    foregroundColor: AppColors.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Home button
-              FadeTransition(
-                opacity: _fade,
-                child: ElevatedButton.icon(
-                  onPressed: _goHome,
-                  icon: const Icon(Icons.home, size: 18),
-                  label: const Text('Back to Home', style: TextStyle(fontSize: 15)),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                ),
+              const SizedBox(width: 8),
+              const Text(
+                'INNINGS SUMMARY',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5, color: AppColors.textMuted),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 16),
+          // Score row
+          Row(
+            children: [
+              Expanded(child: _scoreCol(first.battingTeamName, first.totalRuns, first.totalWickets, first.overDisplay)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text('VS', style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.textMuted, fontSize: 11, letterSpacing: 1)),
+                ),
+              ),
+              Expanded(child: _scoreCol(second.battingTeamName, second.totalRuns, second.totalWickets, second.overDisplay)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -214,9 +355,18 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
   Widget _scoreCol(String team, int runs, int wickets, String overs) {
     return Column(
       children: [
-        Text(team, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+        Text(
+          team,
+          style: const TextStyle(fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         const SizedBox(height: 6),
-        Text('$runs/$wickets', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        Text(
+          '$runs/$wickets',
+          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1),
+        ),
         Text('($overs ov)', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ],
     );
