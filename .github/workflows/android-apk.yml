@@ -44,7 +44,17 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 6. Build APK (correct production way)
+      # 6. Create .env file
+      - name: Create .env file
+        run: |
+          cat <<EOF > .env
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          EOF
+
+      # 7. Build APK (correct production way)
       - name: Build Release APK
         run: |
           flutter clean
