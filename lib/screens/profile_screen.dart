@@ -114,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       // ── STADIUM & PITCH HEADER ──
                       _buildStadiumHeader(context, top, user, myStats),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       // ── DELETION BANNER (above tabs so spacing is consistent) ──
                       Padding(
@@ -129,7 +129,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               // ── CUSTOM SEGMENTED TAB SELECTOR ──
                               _buildCustomSegmentedTabBar(activeTabIndex),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 16),
 
                               // ── TAB CONTENT ──
                               Padding(
@@ -150,7 +150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         totalFours,
                                         totalSixes,
                                       ),
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 16),
                                     _buildAccountCard(user),
                                     const SizedBox(height: 16),
                                     _buildActionsCard(context),
@@ -546,6 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _sectionHeader('Career Batting Stats'),
         const SizedBox(height: 12),
         GridView.count(
+          padding: EdgeInsets.zero,
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -577,6 +578,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _sectionHeader('Career Bowling Stats'),
         const SizedBox(height: 12),
         GridView.count(
+          padding: EdgeInsets.zero,
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -623,6 +625,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _sectionHeader('Scoring Management'),
         const SizedBox(height: 12),
         GridView.count(
+          padding: EdgeInsets.zero,
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
