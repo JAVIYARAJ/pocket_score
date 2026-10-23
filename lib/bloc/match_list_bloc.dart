@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -61,29 +63,43 @@ class MatchListState extends Equatable {
 class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
   final MatchRepository _repo;
   RealtimeChannel? _channel;
+  Timer? _refreshDebounce;
+  int _fetchSeq = 0;
+
+  // Writes to Supabase run one at a time, in order. Scoring saves the match on
+  // every ball; fired concurrently, an older "in_progress" save could commit
+  // after the final "completed" one and leave the match live forever.
+  Future<void> _writeQueue = Future.value();
+  // Matches with local changes not yet saved — a server refresh must not roll
+  // them back (or resurrect ones being deleted).
+  final Map<String, int> _pendingWrites = {};
+  final Set<String> _pendingDeletes = {};
 
   MatchListBloc(this._repo) : super(const MatchListState()) {
     // ── Sync from Supabase on sign-in ────────────────────
     on<SyncMatchesFromSupabase>((event, emit) async {
+      final seq = ++_fetchSeq;
       try {
         final matches = await _repo.getAll();
-        emit(MatchListState(matches: matches));
+        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches)));
         _startRealtimeSync(); // watch for status changes from other devices
       } catch (_) {}
     });
 
     // ── Silent refresh triggered by Realtime ─────────────
     on<_RefreshMatchList>((event, emit) async {
+      final seq = ++_fetchSeq;
       try {
         final matches = await _repo.getAll();
-        emit(MatchListState(matches: matches));
+        // A newer refresh may have finished first; don't overwrite it.
+        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches)));
       } catch (_) {}
     });
 
     // ── Add ────────────────────────────────────────────────
     on<AddMatchToList>((event, emit) {
       emit(MatchListState(matches: [event.match, ...state.matches]));
-      _repo.upsert(event.match).ignore();
+      _enqueueWrite(event.match.id, () => _repo.upsert(event.match));
     });
 
     // ── Update ─────────────────────────────────────────────
@@ -92,12 +108,13 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
         return m.id == event.match.id ? event.match : m;
       }).toList();
       emit(MatchListState(matches: updated));
-      _repo.upsert(event.match).ignore();
+      _enqueueWrite(event.match.id, () => _repo.upsert(event.match));
 
       // When a match is finalised, persist per-player stats to the
-      // relational `player_match_stats` table (fire-and-forget).
+      // relational `player_match_stats` table — after the match row is saved.
       if (event.match.status == 'completed' && event.match.scoreData != null) {
-        _repo.upsertPlayerMatchStats(event.match).ignore();
+        _enqueueWrite(
+            event.match.id, () => _repo.upsertPlayerMatchStats(event.match));
       }
     });
 
@@ -106,8 +123,43 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
       emit(MatchListState(
         matches: state.matches.where((m) => m.id != event.matchId).toList(),
       ));
-      _repo.delete(event.matchId).ignore();
+      _pendingDeletes.add(event.matchId);
+      _enqueueWrite(event.matchId, () => _repo.delete(event.matchId),
+          onDone: () => _pendingDeletes.remove(event.matchId));
     });
+  }
+
+  void _enqueueWrite(String matchId, Future<void> Function() write,
+      {void Function()? onDone}) {
+    _pendingWrites[matchId] = (_pendingWrites[matchId] ?? 0) + 1;
+    _writeQueue = _writeQueue
+        .then((_) => write())
+        .catchError((Object _) {}) // best-effort, as before
+        .whenComplete(() {
+      final left = (_pendingWrites[matchId] ?? 1) - 1;
+      if (left <= 0) {
+        _pendingWrites.remove(matchId);
+      } else {
+        _pendingWrites[matchId] = left;
+      }
+      onDone?.call();
+    });
+  }
+
+  /// Server list with unsaved local changes laid on top.
+  List<MatchSummary> _withLocal(List<MatchSummary> server) {
+    if (_pendingWrites.isEmpty) return server;
+    final local = {for (final m in state.matches) m.id: m};
+    final serverIds = server.map((m) => m.id).toSet();
+    final merged = [
+      // Added locally, not on the server yet.
+      for (final m in state.matches)
+        if (_pendingWrites.containsKey(m.id) && !serverIds.contains(m.id)) m,
+      for (final m in server)
+        if (!_pendingDeletes.contains(m.id))
+          _pendingWrites.containsKey(m.id) ? (local[m.id] ?? m) : m,
+    ];
+    return merged;
   }
 
   void _startRealtimeSync() {
@@ -118,13 +170,26 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'matches',
-          callback: (_) => add(_RefreshMatchList()),
+          // Every ball anywhere updates `matches`; coalesce bursts into one
+          // refetch instead of one per event.
+          callback: (_) {
+            _refreshDebounce?.cancel();
+            _refreshDebounce = Timer(const Duration(milliseconds: 800), () {
+              if (!isClosed) add(_RefreshMatchList());
+            });
+          },
         )
-        .subscribe();
+        // Resync after (re)connecting — changes while offline were missed.
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.subscribed && !isClosed) {
+            add(_RefreshMatchList());
+          }
+        });
   }
 
   @override
   Future<void> close() {
+    _refreshDebounce?.cancel();
     _channel?.unsubscribe();
     return super.close();
   }

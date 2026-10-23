@@ -233,6 +233,28 @@ class ScoreState extends Equatable {
     return isFirstInnings ? firstInnings : secondInnings;
   }
 
+  /// True once the current innings can take no more balls: overs used up,
+  /// batting side all out, or the chase complete. A super over is always one
+  /// over and two wickets, so [totalOvers] only applies to regular innings.
+  bool isInningsOver(int totalOvers) {
+    final inn = currentInnings;
+    if (inn == null) return false;
+    final outCount = outPlayerIds.length + retiredHurtIds.length;
+
+    if (isSuperOver) {
+      final chased = !isSuperOverFirstInnings &&
+          inn.totalRuns >= (superOverFirstInnings?.totalRuns ?? 0) + 1;
+      return chased || inn.legalBallsCount >= 6 || outCount >= 2;
+    }
+
+    final allOut = isLastManStanding
+        ? outCount >= battingLineup.length
+        : outCount >= battingLineup.length - 1;
+    final chased = !isFirstInnings &&
+        inn.totalRuns >= (firstInnings?.totalRuns ?? 0) + 1;
+    return chased || inn.legalBallsCount >= totalOvers * 6 || allOut;
+  }
+
   @override
   List<Object?> get props => [
     firstInnings, secondInnings, superOverFirstInnings, superOverSecondInnings,
@@ -295,9 +317,12 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
 
   ScoreBloc(this._repo) : super(const ScoreState()) {
     on<ResetScoreboard>((event, emit) {
-      if (activeMatchId != null) {
-        _repo.deleteLiveScore(activeMatchId!).ignore();
+      final id = activeMatchId;
+      if (id != null) {
         activeMatchId = null;
+        // Queued behind any in-flight update, so a late upsert can't
+        // re-create the live row after it's deleted.
+        _enqueueLive(() => _repo.deleteLiveScore(id));
       }
       emit(const ScoreState());
     });
@@ -377,7 +402,8 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
 
     on<RecordBall>((event, emit) {
       final currentInnings = state.currentInnings;
-      if (currentInnings == null) return;
+      // No batter on strike (e.g. right after a retirement): nobody to credit.
+      if (currentInnings == null || state.strikerId.isEmpty) return;
 
       final newHistory = List<ScoreState>.from(state.history);
       newHistory.add(state.copyWith(history: const []));
@@ -394,6 +420,7 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         isWicket: event.isWicket,
         wicketType: event.wicketType,
         fielderId: event.fielderId,
+        outPlayerId: event.isWicket ? (event.outPlayerId ?? state.strikerId) : null,
       );
 
       final updatedBalls = List<Ball>.from(currentInnings.balls)..add(ball);
@@ -484,14 +511,7 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         history: newHistory,
       );
       emit(nextState);
-
-      // ── Publish live score to Supabase (fire-and-forget) ──
-      if (activeMatchId != null) {
-        _repo.upsertLiveScore(
-          activeMatchId!,
-          nextState.toJson(),
-        ).ignore();
-      }
+      _pushLiveScore(nextState);
     });
 
     on<SelectNextBatsman>((event, emit) {
@@ -578,19 +598,33 @@ class ScoreBloc extends Bloc<ScoreEvent, ScoreState> {
         }
       }
 
-      emit(state.copyWith(
+      final next = state.copyWith(
         strikerId: newStrikerId,
         nonStrikerId: newNonStrikerId,
         retiredHurtIds: newRetiredIds,
         isLastManStanding: newLastMan,
         history: newHistory,
-      ));
+      );
+      emit(next);
+      _pushLiveScore(next);
+    });
+  }
+
+  // Live-score writes run one at a time, in order. Fired concurrently, an
+  // older ball's upsert could commit after a newer one and leave spectators
+  // on a stale score.
+  Future<void> _liveQueue = Future.value();
+
+  void _enqueueLive(Future<void> Function() write) {
+    _liveQueue = _liveQueue.then((_) => write()).catchError((Object _) {
+      // Live score is best-effort; the next ball re-sends the full state.
     });
   }
 
   void _pushLiveScore(ScoreState s) {
-    if (activeMatchId != null) {
-      _repo.upsertLiveScore(activeMatchId!, s.toJson()).ignore();
-    }
+    final id = activeMatchId;
+    if (id == null) return;
+    final json = s.toJson();
+    _enqueueLive(() => _repo.upsertLiveScore(id, json));
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../bloc/auth_cubit.dart' show AuthBloc;
+import '../bloc/group_cubit.dart' show GroupBloc;
 import '../bloc/match_list_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/score_bloc.dart';
@@ -12,6 +13,8 @@ import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../services/match_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/player_card_sheet.dart';
 import '../utils/stats_utils.dart';
 import '../theme/animations.dart';
 
@@ -115,210 +118,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _showFirstTimeSetup(BuildContext context) {
-    showModalBottomSheet(
-      context       : context,
-      useRootNavigator: true, // Prevents bottom nav from overlapping
-      isDismissible : false,
-      enableDrag    : false,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _PlayerSetupSheet(),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// First-time player setup sheet — shown when the user has no preferences yet.
-// Non-dismissible so the user always sets a role before playing.
-// ─────────────────────────────────────────────────────────────────────────────
-class _PlayerSetupSheet extends StatefulWidget {
-  @override
-  State<_PlayerSetupSheet> createState() => _PlayerSetupSheetState();
-}
-
-class _PlayerSetupSheetState extends State<_PlayerSetupSheet> {
-  String _role         = 'All-Rounder';
-  String _battingStyle = 'Right-hand Bat';
-  String _bowlingStyle = 'Right-arm Fast';
-
-  void _save() {
-    context.read<ProfileBloc>().add(UpdatePlayerPreferences(
-      playerRole   : _role,
-      battingStyle : _battingStyle,
-      bowlingStyle : _bowlingStyle,
-    ));
-    Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      padding: EdgeInsets.fromLTRB(24, 24, 24, bottom + 32),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.sports_cricket_rounded,
-                      color: AppColors.primary, size: 22),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Welcome to Pocket Score!',
-                          style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary)),
-                      SizedBox(height: 2),
-                      Text('Set up your cricket profile to get started.',
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textMuted)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Role
-            _label('PLAYER ROLE'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8, runSpacing: 8,
-              children: ['Batsman', 'Bowler', 'All-Rounder', 'Wicketkeeper']
-                  .map((r) => _chip(r, _role == r,
-                      () => setState(() => _role = r)))
-                  .toList(),
-            ),
-            const SizedBox(height: 20),
-
-            // Batting style
-            _label('BATTING STYLE'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8, runSpacing: 8,
-              children: ['Right-hand Bat', 'Left-hand Bat']
-                  .map((b) => _chip(b, _battingStyle == b,
-                      () => setState(() => _battingStyle = b)))
-                  .toList(),
-            ),
-            const SizedBox(height: 20),
-
-            // Bowling style
-            _label('BOWLING STYLE'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8, runSpacing: 8,
-              children: [
-                'Right-arm Fast',
-                'Right-arm Spin',
-                'Left-arm Fast',
-                'Left-arm Spin',
-                'None',
-              ].map((w) => _chip(w, _bowlingStyle == w,
-                      () => setState(() => _bowlingStyle = w)))
-                  .toList(),
-            ),
-            const SizedBox(height: 28),
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: const Text('Start Playing 🏏',
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w700)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _label(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: AppColors.textMuted,
-          letterSpacing: 1.2,
-        ),
-      );
-
-  Widget _chip(String label, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary.withValues(alpha: 0.1)
-              : AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.5 : 1),
-        ),
-        child: Text(label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: selected ? AppColors.primary : AppColors.textMuted,
-            )),
-      ),
-    );
+    PlayerCardSheet.show(context, firstTime: true);
   }
 }
 
@@ -378,7 +178,7 @@ class _HeroHeader extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hi, ${context.read<AuthBloc>().userName?.split(' ').first ?? 'Scorer'} 🏏',
+                            'Hi, ${_displayName(context)?.split(' ').first ?? 'Scorer'} 🏏',
                             style: const TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w900,
@@ -637,6 +437,16 @@ class _HeroHeader extends StatelessWidget {
   }
 }
 
+/// The user's edited profile name, falling back to their Google name.
+String? _displayName(BuildContext context) {
+  final saved = context.select<ProfileBloc, String?>((b) {
+    final s = b.state;
+    return s is ProfileLoaded ? s.profile.fullName?.trim() : null;
+  });
+  if (saved != null && saved.isNotEmpty) return saved;
+  return context.read<AuthBloc>().userName;
+}
+
 // ── Profile avatar button for home header ─────────────────────
 class _ProfileAvatarBtn extends StatelessWidget {
   final BuildContext context;
@@ -646,7 +456,7 @@ class _ProfileAvatarBtn extends StatelessWidget {
   Widget build(BuildContext ctx) {
     final cubit = context.read<AuthBloc>();
     final avatarUrl = cubit.avatarUrl;
-    final name = cubit.userName ?? '';
+    final name = _displayName(ctx) ?? '';
 
     return GestureDetector(
       onTap: () => context.go('/profile'),
@@ -716,6 +526,7 @@ class _LiveBanner extends StatefulWidget {
 class _LiveBannerState extends State<_LiveBanner> {
   Map<String, dynamic>? _scoreData;
   RealtimeChannel? _channel;
+  int _fetchSeq = 0; // only the newest fetch may update the banner
 
   @override
   void initState() {
@@ -731,10 +542,11 @@ class _LiveBannerState extends State<_LiveBanner> {
   }
 
   Future<void> _fetch() async {
+    final seq = ++_fetchSeq;
     try {
       final data = await MatchRepository(Supabase.instance.client)
           .getLiveScore(widget.match.id);
-      if (mounted) setState(() => _scoreData = data);
+      if (mounted && seq == _fetchSeq) setState(() => _scoreData = data);
     } catch (_) {}
   }
 
@@ -752,7 +564,9 @@ class _LiveBannerState extends State<_LiveBanner> {
           ),
           callback: (_) => _fetch(),
         )
-        .subscribe();
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.subscribed && mounted) _fetch();
+        });
   }
 
   void _watchLive(BuildContext context) {
@@ -1297,64 +1111,10 @@ class _EmptyMatches extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100, height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.15),
-                    width: 2),
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Positioned(
-                    bottom: 25,
-                    child: Image.asset(
-                      'assets/icons/wickets.png',
-                      height: 40,
-                      color: AppColors.primaryLight,
-                      colorBlendMode: BlendMode.srcIn,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 15,
-                    right: 20,
-                    child: Image.asset(
-                      'assets/icons/ic_cricket_ball_icon.png',
-                      height: 20,
-                      color: AppColors.primary,
-                      colorBlendMode: BlendMode.srcIn,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text('No Matches Yet',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            const Text(
-              'Tap "Start New Match" above\nto begin your first game',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
-                  height: 1.6),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyState(
+      art: EmptyArt.matches,
+      title: 'The pitch is ready',
+      message: 'No matches yet. Tap "Start New Match" above\nto bowl the first ball.',
     );
   }
 }
@@ -1406,7 +1166,14 @@ class _MatchCard extends StatelessWidget {
               ),
               child: Row(children: [
                 _statusBadge(isLive, isDone),
-                const Spacer(),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _kindBadge(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Text('${match.totalOvers} overs',
                     style: const TextStyle(
                         fontSize: 11,
@@ -1458,11 +1225,17 @@ class _MatchCard extends StatelessWidget {
                         size: 13,
                         color: AppColors.primary.withValues(alpha: 0.7)),
                     const SizedBox(width: 6),
-                    Text(match.result!,
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary)),
+                    // Long team names: wrap instead of overflowing the card.
+                    Flexible(
+                      child: Text(match.result!,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary)),
+                    ),
                   ],
                 ),
               ),
@@ -1471,8 +1244,8 @@ class _MatchCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: Row(children: [
-                  _momRow(match),
-                  const Spacer(),
+                  Expanded(child: _momRow(match)),
+                  const SizedBox(width: 8),
                   const Row(children: [
                     Icon(Icons.bar_chart_rounded,
                         size: 13, color: AppColors.textMuted),
@@ -1491,6 +1264,38 @@ class _MatchCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Group match (with the group's name) or solo match.
+  Widget _kindBadge(BuildContext context) {
+    final groupId = match.groupId;
+    final groupName = groupId == null
+        ? null
+        : context.select<GroupBloc, String?>((b) =>
+            b.state.groups.where((g) => g.id == groupId).firstOrNull?.name);
+    final isGroup = groupId != null;
+    final color = isGroup ? AppColors.primary : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isGroup ? AppColors.primary.withValues(alpha: 0.1) : AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(isGroup ? Icons.groups_rounded : Icons.person_rounded, size: 12, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            // Group no longer in the list (e.g. left it): still say it's a group match.
+            isGroup ? (groupName ?? 'Group') : 'Solo',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: color),
+          ),
+        ),
+      ]),
     );
   }
 
@@ -1528,10 +1333,13 @@ class _MatchCard extends StatelessWidget {
             alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Text(name,
+              textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+              maxLines: 2,
               style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textSecondary),
+                  color: AppColors.textSecondary,
+                  height: 1.2),
               overflow: TextOverflow.ellipsis),
           if (runs != null)
             Text('$runs/$wkts',
@@ -1551,11 +1359,15 @@ class _MatchCard extends StatelessWidget {
     return Row(children: [
       const Icon(Icons.stars_rounded, size: 14, color: Color(0xFFD97706)),
       const SizedBox(width: 5),
-      Text(mom.name,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textMuted)),
+      Flexible(
+        child: Text(mom.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textMuted)),
+      ),
     ]);
   }
 

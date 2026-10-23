@@ -37,7 +37,8 @@ class LiveScoreScreen extends StatefulWidget {
   State<LiveScoreScreen> createState() => _LiveScoreScreenState();
 }
 
-class _LiveScoreScreenState extends State<LiveScoreScreen> {
+class _LiveScoreScreenState extends State<LiveScoreScreen>
+    with WidgetsBindingObserver {
   late final MatchRepository _repo;
 
   // Score state — fetched via RPC, refreshed on every Realtime event.
@@ -46,6 +47,9 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
   bool   _ended   = false;
   String? _error;
   RealtimeChannel? _channel;
+  // Realtime events can arrive faster than fetches complete; only the newest
+  // request may update the screen, or the score could jump backwards.
+  int _fetchSeq = 0;
 
   final ValueNotifier<_CelebrationData?> _celebration = ValueNotifier(null);
 
@@ -53,12 +57,20 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
   void initState() {
     super.initState();
     _repo = MatchRepository(Supabase.instance.client);
+    WidgetsBinding.instance.addObserver(this);
     _fetch();
     _subscribeRealtime();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Updates published while the app was in the background were missed.
+    if (state == AppLifecycleState.resumed) _fetch();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _channel?.unsubscribe();
     _celebration.dispose();
     super.dispose();
@@ -66,9 +78,10 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
 
   // ── RPC fetch ─────────────────────────────────────────────────────────────
   Future<void> _fetch() async {
+    final seq = ++_fetchSeq;
     try {
       final data = await _repo.getLiveScore(widget.matchId);
-      if (!mounted) return;
+      if (!mounted || seq != _fetchSeq) return;
       _checkCelebration(_scoreData, data);
       setState(() {
         _scoreData = data;
@@ -77,8 +90,14 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
         _error     = null;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() { _error = e.toString(); _loading = false; });
+      if (!mounted || seq != _fetchSeq) return;
+      // Keep showing the last score through a network blip; the next
+      // realtime event or reconnect refetches.
+      if (_scoreData != null) return;
+      setState(() {
+        _error   = 'Couldn\'t load the live score. Check your connection.';
+        _loading = false;
+      });
     }
   }
 
@@ -117,7 +136,11 @@ class _LiveScoreScreenState extends State<LiveScoreScreen> {
           ),
           callback: (_) => _fetch(),
         )
-        .subscribe();
+        // (Re)joining the channel — first connect or after a dropped socket —
+        // means events may have been missed, so resync.
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.subscribed && mounted) _fetch();
+        });
   }
 
   @override
@@ -260,7 +283,7 @@ class _LiveBody extends StatelessWidget {
     final allBalls = innings.balls as List;
     for (final b in allBalls.reversed) {
       if (b.isWicket != true) continue;
-      final pid   = b.strikerId as String;
+      final pid   = (b.outPlayerId ?? b.strikerId) as String;
       final stats = (innings.batsmanStats as Map)[pid];
       final name  = _name(innings.battingPlayers as List, pid);
       if (name == '—' || stats == null) return null;

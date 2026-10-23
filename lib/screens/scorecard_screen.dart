@@ -45,13 +45,17 @@ class _ScorecardScreenState extends State<ScorecardScreen> {
     }
 
     if (second.totalRuns > first.totalRuns) {
-      final w = widget.scoreState.battingLineup.length - 1 - second.totalWickets;
+      final w = second.wicketsInHand(fallbackSquadSize: widget.scoreState.battingLineup.length);
       return '${second.battingTeamName} won by $w wicket${w != 1 ? "s" : ""}';
     }
 
-    final maxWkts = widget.scoreState.battingLineup.length - 1;
-    final isSecondAllOut = second.totalWickets >= maxWkts;
-    final isSecondOversFinished = second.legalBallsCount >= first.legalBallsCount;
+    final isSecondAllOut = second.wicketsInHand(
+            fallbackSquadSize: widget.scoreState.battingLineup.length) == 0;
+    // Compare against the match length, not the first innings: a side bowled
+    // out early doesn't shorten the chase.
+    final isSecondOversFinished = widget.totalOvers > 0
+        ? second.legalBallsCount >= widget.totalOvers * 6
+        : second.legalBallsCount >= first.legalBallsCount;
 
     if (isSecondAllOut || isSecondOversFinished) {
       if (second.totalRuns < first.totalRuns) {

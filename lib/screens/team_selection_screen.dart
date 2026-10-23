@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,16 +7,22 @@ import '../bloc/match_bloc.dart';
 import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../services/group_repository.dart';
+import '../services/guest_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/add_guest_sheet.dart';
+import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
-import '../widgets/premium_header.dart';
+import '../widgets/setup_flow.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TeamSelectionScreen
 //
 // Player pool comes from two sources:
 //   • Group members (registered players with the app) — loaded from Supabase
-//   • Guest players (no app) — added by name inline, excluded from leaderboard
+//   • Guest players (no app) — excluded from the leaderboard. A group's guests
+//     are managed in its Members tab and just listed here; solo matches have
+//     no group, so their guests are added (and saved to the user's personal
+//     list) right on this screen.
 // ─────────────────────────────────────────────────────────────────────────────
 class TeamSelectionScreen extends StatefulWidget {
   const TeamSelectionScreen({super.key});
@@ -27,9 +32,15 @@ class TeamSelectionScreen extends StatefulWidget {
 }
 
 class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
-  // All selectable players (group members + guests added this session)
+  // All selectable players (group members + saved and newly added guests)
   List<Player> _pool = [];
   bool _loading = false;
+  // Guests stored in the saved list (vs. kept for this match only).
+  final Set<String> _savedGuestIds = {};
+  late final _guestRepo = GuestRepository(Supabase.instance.client);
+
+  bool get _isGroupMatch =>
+      context.read<MatchBloc>().state.settings?.groupId != null;
 
   // Selection state
   final List<String> _teamAIds = [];
@@ -40,7 +51,7 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _loadGroupMembers();
+    _loadPlayers();
     // Pre-fill from existing MatchBloc state (e.g. user navigated back)
     final ms = context.read<MatchBloc>().state;
     if (ms.teamA != null) {
@@ -53,30 +64,42 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
     }
   }
 
-  Future<void> _loadGroupMembers() async {
-    final groupId = context.read<MatchBloc>().state.settings?.groupId;
-    if (groupId == null) return; // No group — all players will be guests
+  Future<void> _loadPlayers() async {
+    final ms      = context.read<MatchBloc>().state;
+    final groupId = ms.settings?.groupId;
 
     setState(() => _loading = true);
-    try {
-      final members = await GroupRepository(Supabase.instance.client)
-          .getGroupMembers(groupId);
-      setState(() {
-        _pool = members
-            .map((m) => Player(
-                  id    : m.userId,
-                  name  : m.displayName,
-                  role  : PlayerRole.allRounder,
-                  isGuest: false,
-                  userId : m.userId,
-                ))
-            .toList();
-      });
-    } catch (_) {
-      // If fetch fails, the user can still add guests
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    final members = groupId == null
+        ? Future.value(<Player>[])
+        : GroupRepository(Supabase.instance.client)
+            .getGroupMembers(groupId)
+            .then((list) => list
+                .map((m) => Player(
+                      id    : m.userId,
+                      name  : m.displayName,
+                      role  : PlayerRole.allRounder,
+                      isGuest: false,
+                      userId : m.userId,
+                    ))
+                .toList())
+            .catchError((Object _) => <Player>[]); // can still add guests
+    final saved = _guestRepo
+        .getSavedGuests(groupId)
+        .catchError((Object _) => <Player>[]);
+
+    final results = await Future.wait([members, saved]);
+    if (!mounted) return;
+    setState(() {
+      _savedGuestIds.addAll(results[1].map((g) => g.id));
+      _pool = [...results[0], ...results[1]];
+      // Coming back to this screen: keep players already picked for this
+      // match, including unsaved guests that no list would return.
+      final picked = [...?ms.teamA?.players, ...?ms.teamB?.players];
+      for (final p in picked) {
+        if (!_pool.any((x) => x.id == p.id)) _pool.add(p);
+      }
+      _loading = false;
+    });
   }
 
   // ── Team toggle ───────────────────────────────────────────────────────────
@@ -111,6 +134,31 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
   }
 
   // ── Remove guest ──────────────────────────────────────────────────────────
+  Future<void> _onRemoveGuest(Player p) async {
+    if (!_savedGuestIds.contains(p.id)) {
+      _removeGuest(p.id);
+      return;
+    }
+    final deleteForGood = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _RemoveGuestSheet(name: p.name),
+    );
+    if (deleteForGood == null || !mounted) return;
+    _removeGuest(p.id);
+    if (!deleteForGood) return;
+    try {
+      await _guestRepo.deleteSavedGuest(p.id);
+      _savedGuestIds.remove(p.id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("Couldn't delete ${p.name} from saved guests.")));
+      }
+    }
+  }
+
   void _removeGuest(String id) {
     setState(() {
       _pool.removeWhere((p) => p.id == id);
@@ -128,19 +176,33 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
       useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _AddGuestSheet(
-        onAdd: (name, role) {
-          setState(() {
-            _pool.add(Player(
-              id     : DateTime.now().microsecondsSinceEpoch.toString(),
-              name   : name,
-              role   : role,
-              isGuest: true,
-            ));
-          });
-        },
-      ),
+      builder: (_) => AddGuestSheet(onAdd: _addGuest),
     );
+  }
+
+  Future<void> _addGuest(String name, PlayerRole role) async {
+    final groupId = context.read<MatchBloc>().state.settings?.groupId;
+    Player guest;
+    try {
+      // Returns the existing guest for a known name, so re-adding "Ravi"
+      // keeps one Ravi (and one stats identity).
+      guest = await _guestRepo.saveGuest(groupId, name, role);
+      _savedGuestIds.add(guest.id);
+    } catch (_) {
+      // Still usable for this match, just not remembered.
+      guest = Player(
+        id     : DateTime.now().microsecondsSinceEpoch.toString(),
+        name   : name,
+        role   : role,
+        isGuest: true,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("$name added for this match, but couldn't be saved for next time.")));
+      }
+    }
+    if (!mounted || _pool.any((p) => p.id == guest.id)) return;
+    setState(() => _pool.add(guest));
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -183,61 +245,40 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
     final registered = _pool.where((p) => !p.isGuest).toList();
     final guests     = _pool.where((p) =>  p.isGuest).toList();
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Column(
-          children: [
-            // ── Header ──────────────────────────────────────────────────
-            PremiumHeader(
-              category: 'STEP 2',
-              title: 'Select Teams',
-              trailing: TapBounce(
-                onTap: _showAddGuest,
-                child: Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.person_add_alt_1_rounded,
-                      color: Colors.white, size: 20),
+    return SetupScaffold(
+      step: SetupStep.squads,
+      title: 'Pick Squads',
+      subtitle: const Text('Put each player in A or B, then pick captains'),
+      trailing: _isGroupMatch
+          ? null
+          : TapBounce(
+              onTap: _showAddGuest,
+              child: Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
                 ),
-              ),
-              bottomChild: Row(
-                children: [
-                  Expanded(child: _teamBadge(teamAName, AppColors.info,
-                      _teamAIds.length, _captainA != null)),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text('VS',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                            letterSpacing: 1)),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: _teamBadge(teamBName, AppColors.accentLight,
-                      _teamBIds.length, _captainB != null)),
-                ],
+                child: const Icon(Icons.person_add_alt_1_rounded,
+                    color: Colors.white, size: 20),
               ),
             ),
-
-            // ── Player list ──────────────────────────────────────────────
-            Expanded(
-              child: _loading
+      headerBottom: Row(
+        children: [
+          Expanded(child: _teamBadge(teamAName, TeamColors.a,
+              _teamAIds.length, _captainA != null)),
+          const SizedBox(width: 10),
+          Text('VS',
+              style: TextStyle(
+                  color: AppColors.accentLight.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12)),
+          const SizedBox(width: 10),
+          Expanded(child: _teamBadge(teamBName, TeamColors.b,
+              _teamBIds.length, _captainB != null)),
+        ],
+      ),
+      body: _loading
                   ? const Center(
                       child: CircularProgressIndicator(
                           color: AppColors.primary, strokeWidth: 2))
@@ -267,130 +308,101 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                               _sectionLabel('Guest Players',
                                   Icons.person_outline_rounded,
                                   AppColors.textMuted),
+                              const SizedBox(height: 2),
+                              Text(
+                                _isGroupMatch
+                                    ? "Add or remove guests in the group's Members tab."
+                                    : 'Saved to your list for your next match.',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.textMuted),
+                              ),
                               const SizedBox(height: 8),
                               ...guests.asMap().entries.map(
                                 (e) => _playerTile(
                                   e.value,
                                   registered.length + e.key,
                                   teamAName, teamBName,
-                                  canRemove: true,
+                                  canRemove: !_isGroupMatch,
                                 ),
                               ),
                               const SizedBox(height: 8),
                             ],
 
-                            // ── Add guest prompt ───────────────────────
-                            _addGuestPrompt(),
+                            // ── Add guest prompt (solo only) ───────────
+                            if (_isGroupMatch)
+                              _groupGuestsHint()
+                            else
+                              _addGuestPrompt(),
                             const SizedBox(height: 80),
                           ],
                         )),
-            ),
-
-            // ── Submit button ────────────────────────────────────────────
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.35),
-                          blurRadius: 14,
-                          offset: const Offset(0, 5))
-                    ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _submit,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(54),
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text('Preview Lineups',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w700)),
-                        SizedBox(width: 10),
-                        Icon(Icons.arrow_forward_rounded, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      bottomBar: SetupCta(
+        label: 'Review Line-ups',
+        icon: Icons.fact_check_rounded,
+        onTap: _submit,
+        hint: Text(_squadHint()),
       ),
     );
   }
 
+  /// What's still needed before the line-ups can be reviewed.
+  String _squadHint() {
+    if (_teamAIds.length < 2 || _teamBIds.length < 2) {
+      return 'Each team needs at least 2 players';
+    }
+    if (_captainA == null || _captainB == null) {
+      return 'Tap the star to pick a captain for each team';
+    }
+    return '${_teamAIds.length} vs ${_teamBIds.length} — ready to review';
+  }
+
   // ── Empty state (no group + no guests added) ──────────────────────────────
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.people_outline_rounded,
-                  size: 48, color: AppColors.primary),
-            ),
-            const SizedBox(height: 20),
-            const Text('No players yet',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            const Text(
-              'This match has no group, or the group has no members.\n'
-              'Tap + to add guest players.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13, color: AppColors.textMuted, height: 1.5),
-            ),
-            const SizedBox(height: 24),
-            TapBounce(
-              onTap: _showAddGuest,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 12)
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.person_add_alt_1_rounded,
-                        color: Colors.white, size: 18),
-                    SizedBox(width: 8),
-                    Text('Add Guest Player',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    // A group always has at least its creator, so an empty pool here means
+    // the members (and saved guests) failed to load.
+    if (_isGroupMatch) {
+      return EmptyState(
+        art: EmptyArt.offline,
+        title: "Couldn't load the group's players",
+        message: 'Check your connection and try again.',
+        action: TextButton.icon(
+          onPressed: _loadPlayers,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Try again'),
+        ),
+      );
+    }
+    return EmptyState(
+      art: EmptyArt.members,
+      title: 'No players at the crease',
+      message: 'Solo matches use guest players.\n'
+          'Add the people playing today — they\'re saved for next time.',
+      action: TapBounce(
+        onTap: _showAddGuest,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 12)
+            ],
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.person_add_alt_1_rounded,
+                  color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('Add Guest Player',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
         ),
       ),
     );
@@ -408,6 +420,27 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                 color: color,
                 letterSpacing: 0.8)),
       ],
+    );
+  }
+
+  // Group matches take guests from the group's Members tab.
+  Widget _groupGuestsHint() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: AppDecorations.tintedCard(AppColors.info),
+      child: const Row(
+        children: [
+          Icon(Icons.info_outline_rounded, size: 18, color: AppColors.info),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Playing with someone who doesn't have the app? Add them as a "
+              "guest from the group's Members tab.",
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -534,7 +567,7 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${p.role.name.toUpperCase()}${p.isGuest ? '  •  GUEST' : ''}',
+                    '${_roleLabel(p.role)}${p.isGuest ? '  •  GUEST' : ''}',
                     style: const TextStyle(
                         fontSize: 9.5,
                         color: AppColors.textMuted,
@@ -571,7 +604,7 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
               ),
             ] else if (canRemove) ...[
               GestureDetector(
-                onTap: () => _removeGuest(p.id),
+                onTap: () => _onRemoveGuest(p),
                 child: Container(
                   margin: const EdgeInsets.only(right: 6),
                   padding: const EdgeInsets.all(6),
@@ -586,10 +619,10 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
             ],
 
             // ── Team toggles ───────────────────────────────────────────
-            _teamToggle(teamAName, isA, AppColors.info,
+            _teamToggle('A', isA, TeamColors.a,
                 () => _toggle(p.id, true)),
             const SizedBox(width: 4),
-            _teamToggle(teamBName, isB, AppColors.accent,
+            _teamToggle('B', isB, TeamColors.b,
                 () => _toggle(p.id, false)),
           ],
         ),
@@ -599,394 +632,190 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
 
   Widget _teamBadge(
       String name, Color color, int count, bool hasCaptain) {
+    final letter = color == TeamColors.a ? 'A' : 'B';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.6), width: 1.5),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Flexible(
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Text(letter,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13),
-                overflow: TextOverflow.ellipsis),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13)),
           ),
-          Row(
-            children: [
-              Text('$count',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13)),
-              if (hasCaptain)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Icon(Icons.star_rounded,
-                      size: 12, color: Colors.amber),
-                ),
-            ],
+          Text('$count',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14)),
+          if (hasCaptain)
+            const Padding(
+              padding: EdgeInsets.only(left: 3),
+              child: Icon(Icons.star_rounded, size: 14, color: AppColors.accentLight),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Team letters, not names: names can be long or share an initial
+  // ("Team A" / "Team B"). The header badges map A/B to the team names.
+  Widget _teamToggle(
+      String letter, bool selected, Color color, VoidCallback onTap) {
+    return TapBounce(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? color : Colors.transparent,
+          border: Border.all(
+              color: selected ? color : AppColors.border, width: 1.5),
+          boxShadow: selected
+              ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))]
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          letter,
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: selected ? Colors.white : AppColors.textMuted),
+        ),
+      ),
+    );
+  }
+
+  static String _roleLabel(PlayerRole r) => switch (r) {
+        PlayerRole.batsman      => 'BATTER',
+        PlayerRole.bowler       => 'BOWLER',
+        PlayerRole.allRounder   => 'ALL-ROUNDER',
+        PlayerRole.wicketKeeper => 'KEEPER',
+      };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remove a saved guest — from this match only, or from the saved list.
+// Pops `false` for this match only, `true` to delete for good.
+// ─────────────────────────────────────────────────────────────────────────────
+class _RemoveGuestSheet extends StatelessWidget {
+  final String name;
+  const _RemoveGuestSheet({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+          24, 20, 24, MediaQuery.of(context).padding.bottom + 24),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Remove $name?',
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 6),
+          const Text(
+            'Guests are saved so you can reuse them in later matches.',
+            style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 20),
+          _option(
+            context,
+            icon: Icons.event_busy_rounded,
+            color: AppColors.textSecondary,
+            title: 'Only from this match',
+            subtitle: 'Stays in the saved list for next time',
+            result: false,
+          ),
+          const SizedBox(height: 10),
+          _option(
+            context,
+            icon: Icons.delete_outline_rounded,
+            color: AppColors.danger,
+            title: 'Delete from saved guests',
+            subtitle: "Won't appear in future matches",
+            result: true,
           ),
         ],
       ),
     );
   }
 
-  Widget _teamToggle(
-      String label, bool selected, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        constraints: const BoxConstraints(maxWidth: 72),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+  Widget _option(BuildContext context,
+      {required IconData icon,
+      required Color color,
+      required String title,
+      required String subtitle,
+      required bool result}) {
+    return TapBounce(
+      onTap: () => Navigator.pop(context, result),
+      child: Container(
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.18) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: selected ? color : AppColors.border),
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: selected ? color : AppColors.textMuted),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Add Guest Player bottom sheet
-// ─────────────────────────────────────────────────────────────────────────────
-class _AddGuestSheet extends StatefulWidget {
-  final void Function(String name, PlayerRole role) onAdd;
-  const _AddGuestSheet({required this.onAdd});
-
-  @override
-  State<_AddGuestSheet> createState() => _AddGuestSheetState();
-}
-
-class _AddGuestSheetState extends State<_AddGuestSheet> {
-  final _ctrl = TextEditingController();
-  final ValueNotifier<PlayerRole> _roleNotifier = ValueNotifier<PlayerRole>(PlayerRole.allRounder);
-  final ValueNotifier<bool> _multiLineNotifier = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> _hasTextNotifier = ValueNotifier<bool>(false);
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl.addListener(() {
-      _hasTextNotifier.value = _ctrl.text.trim().isNotEmpty;
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    _roleNotifier.dispose();
-    _multiLineNotifier.dispose();
-    _hasTextNotifier.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final text = _ctrl.text.trim();
-    if (text.isEmpty) return;
-
-    final names = _multiLineNotifier.value
-        ? text
-            .split(RegExp(r'[,;\n]'))
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList()
-        : [text];
-
-    for (final name in names) {
-      widget.onAdd(name, _roleNotifier.value);
-    }
-    Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 100),
-          padding: EdgeInsets.fromLTRB(24, 20, 24, bottom + 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                        color: AppColors.border,
-                        borderRadius: BorderRadius.circular(2)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text('Add Guest Player',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary)),
-                const SizedBox(height: 4),
-                const Text(
-                  'Guest scores are tracked per match but not shown in the leaderboard.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 20),
-
-                // Mode Selector Segmented Control (Single vs Bulk)
-                ValueListenableBuilder<bool>(
-                  valueListenable: _multiLineNotifier,
-                  builder: (context, isBulk, _) {
-                    return Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                        border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final tabWidth = constraints.maxWidth / 2;
-                          return SizedBox(
-                            height: 38,
-                            child: Stack(
-                              children: [
-                                AnimatedPositioned(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.fastOutSlowIn,
-                                  left: isBulk ? tabWidth : 0,
-                                  top: 0,
-                                  bottom: 0,
-                                  width: tabWidth,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary,
-                                      borderRadius: BorderRadius.circular(20),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppColors.primary.withValues(alpha: 0.25),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        )
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    _modeTab('Single Player', false, isBulk),
-                                    _modeTab('Bulk Add (Multiple)', true, isBulk),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-                      ),
-                    );
-                  }
-                ),
-                const SizedBox(height: 20),
-
-                // Name field
-                ValueListenableBuilder<bool>(
-                  valueListenable: _multiLineNotifier,
-                  builder: (context, isBulk, _) {
-                    return TextField(
-                      controller: _ctrl,
-                      autofocus: true,
-                      maxLines: isBulk ? 4 : 1,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: InputDecoration(
-                        labelText: isBulk ? 'Player Names' : 'Player Name',
-                        hintText: isBulk
-                            ? 'One name per line, or comma-separated'
-                            : 'Enter player name',
-                        hintStyle: const TextStyle(color: AppColors.textMuted),
-                        prefixIcon: isBulk
-                            ? null
-                            : const Icon(Icons.person_outline_rounded, color: AppColors.primary),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14)),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: AppColors.primary, width: 2),
-                        ),
-                      ),
-                    );
-                  }
-                ),
-                const SizedBox(height: 20),
-
-                // Role selector
-                const Text('ROLE',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textMuted,
-                        letterSpacing: 1.5)),
-                const SizedBox(height: 8),
-                ValueListenableBuilder<PlayerRole>(
-                  valueListenable: _roleNotifier,
-                  builder: (context, currentRole, _) {
-                    return Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: PlayerRole.values.map((role) {
-                        final selected = currentRole == role;
-                        return TapBounce(
-                          onTap: () => _roleNotifier.value = role,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? AppColors.primary.withValues(alpha: 0.12)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: selected
-                                      ? AppColors.primary
-                                      : AppColors.border),
-                            ),
-                            child: Text(
-                              _roleLabel(role),
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: selected
-                                      ? AppColors.primary
-                                      : AppColors.textSecondary),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  }
-                ),
-                const SizedBox(height: 24),
-
-                // Add button
-                ValueListenableBuilder<bool>(
-                  valueListenable: _hasTextNotifier,
-                  builder: (context, hasText, _) {
-                    return ValueListenableBuilder<bool>(
-                      valueListenable: _multiLineNotifier,
-                      builder: (context, isBulk, _) {
-                        final isEnabled = hasText;
-                        return SizedBox(
-                          width: double.infinity,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            decoration: BoxDecoration(
-                              gradient: isEnabled ? AppColors.primaryGradient : null,
-                              color: isEnabled ? null : AppColors.border.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(14),
-                              boxShadow: isEnabled
-                                  ? [
-                                      BoxShadow(
-                                          color: AppColors.primary.withValues(alpha: 0.3),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4))
-                                    ]
-                                  : null,
-                            ),
-                            child: ElevatedButton(
-                              onPressed: isEnabled ? _submit : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                disabledBackgroundColor: Colors.transparent,
-                                disabledForegroundColor: AppColors.textMuted,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
-                              ),
-                              child: Text(
-                                isBulk ? 'Add Players' : 'Add Player',
-                                style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: isEnabled ? Colors.white : AppColors.textMuted),
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    );
-                  }
-                ),
-              ],
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: color)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
-  }
-
-  Widget _modeTab(String label, bool value, bool currentValue) {
-    final bool active = currentValue == value;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _multiLineNotifier.value = value,
-        child: Center(
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 200),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: active ? FontWeight.bold : FontWeight.w600,
-              color: active ? Colors.white : AppColors.textMuted,
-            ),
-            child: Text(label),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _roleLabel(PlayerRole role) {
-    switch (role) {
-      case PlayerRole.batsman:      return 'Batsman';
-      case PlayerRole.bowler:       return 'Bowler';
-      case PlayerRole.allRounder:   return 'All-Rounder';
-      case PlayerRole.wicketKeeper: return 'WK';
-    }
   }
 }

@@ -1,6 +1,5 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/match_bloc.dart';
 import '../bloc/match_list_bloc.dart';
@@ -9,7 +8,7 @@ import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/premium_header.dart';
+import '../widgets/setup_flow.dart';
 
 class OpeningSelectionScreen extends StatefulWidget {
   final String battingTeamName;
@@ -142,301 +141,520 @@ class _OpeningSelectionScreenState extends State<OpeningSelectionScreen> {
         : (ms.teamA?.name ?? '');
   }
 
+  // Which batting slot the next tapped batter goes into.
+  _BatSlot _activeSlot = _BatSlot.striker;
+
+  void _pickBatter(Player p) {
+    final sel = _notifier.value;
+    String? striker = sel.strikerId;
+    String? nonStriker = sel.nonStrikerId;
+
+    if (p.id == striker) {
+      // Tapping a picked batter frees their slot and makes it the next to fill.
+      striker = null;
+      _activeSlot = _BatSlot.striker;
+    } else if (p.id == nonStriker) {
+      nonStriker = null;
+      _activeSlot = _BatSlot.nonStriker;
+    } else if (_activeSlot == _BatSlot.striker) {
+      striker = p.id;
+      if (nonStriker == null) _activeSlot = _BatSlot.nonStriker;
+    } else {
+      nonStriker = p.id;
+      if (striker == null) _activeSlot = _BatSlot.striker;
+    }
+    setState(() {});
+    _notifier.value = _OpeningStateData(
+      strikerId: striker,
+      nonStrikerId: nonStriker,
+      bowlerId: sel.bowlerId,
+    );
+  }
+
+  void _swapBatters() {
+    final sel = _notifier.value;
+    _notifier.value = _OpeningStateData(
+      strikerId: sel.nonStrikerId,
+      nonStrikerId: sel.strikerId,
+      bowlerId: sel.bowlerId,
+    );
+  }
+
+  String? _name(List<Player> players, String? id) =>
+      id == null ? null : players.where((p) => p.id == id).firstOrNull?.name;
+
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: ValueListenableBuilder<_OpeningStateData>(
-          valueListenable: _notifier,
-          builder: (context, selection, _) {
-            final allReady = selection.strikerId != null && selection.nonStrikerId != null && selection.bowlerId != null;
-            return Column(
-              children: [
-                // ── Gradient header ────────────────────────────────
-                _buildHeader(context),
-
-                // ── Content ────────────────────────────────────────
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Target banner for 2nd innings
-                        if (widget.target > 0) ...[
-                          FadeInEntrance(
-                            offset: const Offset(0, 20),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                gradient: AppColors.dangerGradient,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [BoxShadow(color: AppColors.danger.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-                                    child: const Icon(Icons.flag_rounded, color: Colors.white, size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    children: [
-                                      const Text('TARGET', style: TextStyle(fontSize: 11, letterSpacing: 2, color: Colors.white70, fontWeight: FontWeight.w700)),
-                                      Text('${widget.target}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white, height: 1.1)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-
-                        // Opening Batsmen section
-                        _sectionHeader('Opening Batsmen', widget.battingTeamName, AppColors.info, Icons.sports_cricket_rounded),
-                        const SizedBox(height: 10),
-                        ...widget.battingPlayers.asMap().entries.map((e) {
-                          final p       = e.value;
-                          final isStr   = selection.strikerId == p.id;
-                          final isNon   = selection.nonStrikerId == p.id;
-                          final sel     = isStr ? AppColors.success : isNon ? AppColors.info : null;
-                          final badge   = isStr ? '⚡ Striker' : isNon ? '🏏 Non-Striker' : null;
-                          return FadeInEntrance(
-                            delay: Duration(milliseconds: 40 * e.key),
-                            offset: const Offset(20, 0),
-                            child: _playerTile(
-                              p, sel, badge,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _chip('S', isStr, AppColors.success, () {
-                                    _notifier.value = _OpeningStateData(
-                                      strikerId: p.id,
-                                      nonStrikerId: selection.nonStrikerId == p.id ? null : selection.nonStrikerId,
-                                      bowlerId: selection.bowlerId,
-                                    );
-                                  }),
-                                  const SizedBox(width: 6),
-                                  _chip('NS', isNon, AppColors.info, () {
-                                    _notifier.value = _OpeningStateData(
-                                      strikerId: selection.strikerId == p.id ? null : selection.strikerId,
-                                      nonStrikerId: p.id,
-                                      bowlerId: selection.bowlerId,
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-
-                        const SizedBox(height: 24),
-
-                        // Opening Bowler section
-                        _sectionHeader('Opening Bowler', _bowlingTeamName, AppColors.danger, Icons.sports_baseball_rounded),
-                        const SizedBox(height: 10),
-                        ...widget.bowlingPlayers.asMap().entries.map((e) {
-                          final p    = e.value;
-                          final isSel = selection.bowlerId == p.id;
-                          return FadeInEntrance(
-                            delay: Duration(milliseconds: 40 * e.key),
-                            offset: const Offset(20, 0),
-                            child: _playerTile(
-                              p, isSel ? AppColors.warning : null,
-                              isSel ? '🎯 Bowling' : null,
-                              trailing: isSel
-                                  ? Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.15), shape: BoxShape.circle),
-                                      child: const Icon(Icons.check_circle_rounded, color: AppColors.warning, size: 20),
-                                    )
-                                  : Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
-                                      child: const Icon(Icons.radio_button_unchecked, color: AppColors.textMuted, size: 20),
-                                    ),
-                              onTap: () {
-                                _notifier.value = _OpeningStateData(
-                                  strikerId: selection.strikerId,
-                                  nonStrikerId: selection.nonStrikerId,
-                                  bowlerId: p.id,
-                                );
-                              },
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ── Start button ────────────────────────────────────
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: allReady ? AppColors.successGradient : null,
-                        color: allReady ? null : AppColors.surfaceLight,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: allReady ? [BoxShadow(color: AppColors.success.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))] : null,
-                      ),
-                      child: ElevatedButton.icon(
-                        onPressed: allReady ? _start : null,
-                        icon: Text(allReady ? '🏏' : '⏳', style: const TextStyle(fontSize: 18)),
-                        label: Text(
-                          allReady ? 'Start ${widget.target > 0 ? "2nd Innings" : "Match"}' : 'Select all players first',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: allReady ? Colors.white : AppColors.textMuted,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(54),
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+    final is2nd = widget.target > 0;
+    return ValueListenableBuilder<_OpeningStateData>(
+      valueListenable: _notifier,
+      builder: (context, selection, _) {
+        final missing = [
+          if (selection.strikerId == null) 'striker',
+          if (selection.nonStrikerId == null) 'non-striker',
+          if (selection.bowlerId == null) 'bowler',
+        ];
+        return SetupScaffold(
+          step: is2nd ? null : SetupStep.openers,
+          eyebrow: is2nd ? 'SECOND INNINGS' : null,
+          title: is2nd ? 'The Chase' : 'Pick Openers',
+          subtitle: Text('${widget.battingTeamName} bat  ·  $_bowlingTeamName bowl'),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            children: [
+              if (is2nd) ...[
+                FadeInEntrance(offset: const Offset(0, 16), child: _targetBanner()),
+                const SizedBox(height: 16),
               ],
-            );
-          },
+              FadeInEntrance(
+                offset: const Offset(0, 16),
+                child: _CreaseCard(
+                  striker: _name(widget.battingPlayers, selection.strikerId),
+                  nonStriker: _name(widget.battingPlayers, selection.nonStrikerId),
+                  bowler: _name(widget.bowlingPlayers, selection.bowlerId),
+                  activeSlot: _activeSlot,
+                  onSlotTap: (slot) => setState(() => _activeSlot = slot),
+                  onSwap: selection.strikerId != null && selection.nonStrikerId != null
+                      ? _swapBatters
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 22),
+
+              // ── Batters ──────────────────────────────────────────────
+              SetupSectionTitle(
+                icon: Icons.sports_cricket_rounded,
+                color: AppColors.primary,
+                title: 'Opening batters',
+                caption: widget.battingTeamName,
+                trailing: _PickingPill(
+                  text: _activeSlot == _BatSlot.striker ? 'Picking striker' : 'Picking non-striker',
+                  color: _activeSlot == _BatSlot.striker ? AppColors.primary : AppColors.info,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PlayerGrid(
+                players: widget.battingPlayers,
+                badgeFor: (p) => p.id == selection.strikerId
+                    ? ('STRIKER', AppColors.primary)
+                    : p.id == selection.nonStrikerId
+                        ? ('NON-STRIKER', AppColors.info)
+                        : null,
+                onTap: _pickBatter,
+              ),
+              const SizedBox(height: 22),
+
+              // ── Bowler ───────────────────────────────────────────────
+              SetupSectionTitle(
+                icon: Icons.sports_baseball_rounded,
+                color: AppColors.danger,
+                title: 'Opening bowler',
+                caption: _bowlingTeamName,
+              ),
+              const SizedBox(height: 12),
+              _PlayerGrid(
+                players: widget.bowlingPlayers,
+                badgeFor: (p) => p.id == selection.bowlerId ? ('BOWLING', AppColors.danger) : null,
+                onTap: (p) => _notifier.value = _OpeningStateData(
+                  strikerId: selection.strikerId,
+                  nonStrikerId: selection.nonStrikerId,
+                  bowlerId: selection.bowlerId == p.id ? null : p.id,
+                ),
+              ),
+            ],
+          ),
+          bottomBar: SetupCta(
+            label: is2nd ? 'Start the Chase' : 'Start Match',
+            icon: Icons.play_arrow_rounded,
+            onTap: missing.isEmpty ? _start : null,
+            hint: missing.isEmpty ? null : Text('Still to pick: ${missing.join(', ')}'),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _targetBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: AppColors.scoreGradient,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: AppColors.scoreBlue.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: const Icon(Icons.flag_rounded, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${widget.battingTeamName} need',
+                    style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.75), fontWeight: FontWeight.w600)),
+                Text('${widget.target} to win',
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
+              ],
+            ),
+          ),
+          Column(
+            children: [
+              Text('TARGET',
+                  style: TextStyle(fontSize: 9.5, letterSpacing: 1.8, fontWeight: FontWeight.w800, color: Colors.white.withValues(alpha: 0.6))),
+              Text('${widget.target}',
+                  style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.accentLight, height: 1.1)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+enum _BatSlot { striker, nonStriker }
+
+/// The pitch from above: bowler and non-striker at one end, striker at the
+/// other. Batting slots are tappable to choose which one to fill next.
+class _CreaseCard extends StatelessWidget {
+  final String? striker;
+  final String? nonStriker;
+  final String? bowler;
+  final _BatSlot activeSlot;
+  final ValueChanged<_BatSlot> onSlotTap;
+  final VoidCallback? onSwap;
+
+  const _CreaseCard({
+    required this.striker,
+    required this.nonStriker,
+    required this.bowler,
+    required this.activeSlot,
+    required this.onSlotTap,
+    required this.onSwap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF15803D), Color(0xFF166534)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFF166534).withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8)),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: CustomPaint(painter: _PitchPainter())),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _Slot(
+                          role: 'BOWLER',
+                          name: bowler,
+                          color: AppColors.danger,
+                          icon: Icons.sports_baseball_rounded,
+                          active: false,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _Slot(
+                          role: 'NON-STRIKER',
+                          name: nonStriker,
+                          color: AppColors.info,
+                          icon: Icons.directions_run_rounded,
+                          active: activeSlot == _BatSlot.nonStriker,
+                          onTap: () => onSlotTap(_BatSlot.nonStriker),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Swap sits mid-pitch, between the two ends
+                  TapBounce(
+                    onTap: onSwap ?? () {},
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: onSwap != null ? 1 : 0.4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.swap_vert_rounded, size: 16, color: AppColors.primaryDark),
+                            SizedBox(width: 4),
+                            Text('Swap ends',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Spacer(flex: 1),
+                      Expanded(
+                        flex: 4,
+                        child: _Slot(
+                          role: 'STRIKER',
+                          name: striker,
+                          color: AppColors.primary,
+                          icon: Icons.sports_cricket_rounded,
+                          active: activeSlot == _BatSlot.striker,
+                          onTap: () => onSlotTap(_BatSlot.striker),
+                        ),
+                      ),
+                      const Spacer(flex: 1),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildHeader(BuildContext context) {
-    final is2nd  = widget.target > 0;
-    return PremiumHeader(
-      category: is2nd ? 'STEP 4 OF 4' : 'STEP 4 OF 4',
-      title: is2nd ? '2nd Innings — Select Openers' : 'Select Openers',
-    );
-  }
+class _Slot extends StatelessWidget {
+  final String role;
+  final String? name;
+  final Color color;
+  final IconData icon;
+  final bool active;
+  final VoidCallback? onTap;
 
-  Widget _sectionHeader(String title, String sub, Color color, IconData icon) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 16, color: color),
-        ),
-        const SizedBox(width: 10),
-        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Text(sub, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
-        ),
-      ],
-    );
-  }
+  const _Slot({
+    required this.role,
+    required this.name,
+    required this.color,
+    required this.icon,
+    required this.active,
+    this.onTap,
+  });
 
-  Widget _playerTile(Player p, Color? highlight, String? badge, {Widget? trailing, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+  @override
+  Widget build(BuildContext context) {
+    final filled = name != null;
+    return TapBounce(
+      onTap: onTap ?? () {},
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: highlight != null ? highlight.withValues(alpha: 0.07) : AppColors.card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: highlight != null ? highlight.withValues(alpha: 0.2) : AppColors.border),
+          // Solid even when empty, so pitch markings don't show through.
+          color: filled ? Colors.white : const Color(0xFF14532D),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? AppColors.accentLight : Colors.white.withValues(alpha: filled ? 0 : 0.45),
+            width: active ? 2.5 : 1.2,
+          ),
+          boxShadow: active
+              ? [BoxShadow(color: AppColors.accentLight.withValues(alpha: 0.45), blurRadius: 12)]
+              : null,
         ),
         child: Row(
           children: [
             Container(
-              width: 38, height: 38,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
-                color: (highlight ?? AppColors.surfaceLight).withValues(alpha: highlight != null ? 0.2 : 1),
-                borderRadius: BorderRadius.circular(10),
+                color: filled ? color : Colors.white.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
-              child: Text(p.name[0].toUpperCase(), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: highlight ?? AppColors.textMuted)),
+              child: filled
+                  ? Text(name![0].toUpperCase(),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white))
+                  : Icon(icon, size: 16, color: Colors.white),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          p.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (p.isGuest) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: AppColors.textMuted.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text('GUEST',
-                              style: TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textMuted,
-                                  letterSpacing: 0.3)),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (badge != null)
-                    Text(badge, style: TextStyle(fontSize: 11, color: highlight ?? AppColors.textMuted, fontWeight: FontWeight.w600))
-                  else
-                    Text(
-                      '${p.role.name.toUpperCase()}${p.isGuest ? '  •  GUEST' : ''}',
-                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted, letterSpacing: 0.5),
-                    ),
+                  Text(role,
+                      style: TextStyle(
+                          fontSize: 8.5,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w800,
+                          color: filled ? color : Colors.white.withValues(alpha: 0.8))),
+                  Text(name ?? (active ? 'Tap a player' : 'Empty'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: filled ? AppColors.textPrimary : Colors.white)),
                 ],
               ),
             ),
-            if (trailing != null) trailing,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pitch strip, creases and stumps drawn over the outfield.
+class _PitchPainter extends CustomPainter {
+  const _PitchPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Mowing bands
+    final band = Paint()..color = Colors.white.withValues(alpha: 0.04);
+    for (var y = 0.0; y < size.height; y += 36) {
+      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 18), band);
+    }
+    // Pitch strip down the middle
+    final pitch = Rect.fromCenter(
+        center: size.center(Offset.zero), width: size.width * 0.3, height: size.height + 20);
+    canvas.drawRect(pitch, Paint()..color = const Color(0xFFD9C38E).withValues(alpha: 0.35));
+    final crease = Paint()
+      ..color = Colors.white.withValues(alpha: 0.55)
+      ..strokeWidth = 2;
+    // Popping creases at the two ends of the pitch (card edges), clear of the slots.
+    for (final y in [9.0, size.height - 9]) {
+      canvas.drawLine(Offset(pitch.left - 10, y), Offset(pitch.right + 10, y), crease);
+      // Stumps
+      final stump = Paint()..color = const Color(0xFFF5DEB3).withValues(alpha: 0.8);
+      for (var i = -1; i <= 1; i++) {
+        canvas.drawCircle(Offset(size.width / 2 + i * 5, y), 2.2, stump);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PitchPainter oldDelegate) => false;
+}
+
+class _PickingPill extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _PickingPill({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(text,
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+    );
+  }
+}
+
+/// Two-column grid of player chips; a badge marks the chosen ones.
+class _PlayerGrid extends StatelessWidget {
+  final List<Player> players;
+  final (String, Color)? Function(Player) badgeFor;
+  final ValueChanged<Player> onTap;
+
+  const _PlayerGrid({required this.players, required this.badgeFor, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) {
+      final w = (c.maxWidth - 10) / 2;
+      return Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final p in players)
+            SizedBox(width: w, child: _chip(p, badgeFor(p))),
+        ],
+      );
+    });
+  }
+
+  Widget _chip(Player p, (String, Color)? badge) {
+    final color = badge?.$2;
+    return TapBounce(
+      onTap: () => onTap(p),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.fromLTRB(8, 9, 8, 9),
+        decoration: BoxDecoration(
+          color: color != null ? color.withValues(alpha: 0.08) : AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color ?? AppColors.border, width: color != null ? 1.8 : 1),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color ?? AppColors.surfaceLight,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(p.name[0].toUpperCase(),
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w900,
+                      color: color != null ? Colors.white : AppColors.textSecondary)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  Text(badge?.$1 ?? (p.isGuest ? 'GUEST' : _role(p.role)),
+                      maxLines: 1,
+                      style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w800,
+                          color: color ?? AppColors.textMuted)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _chip(String label, bool selected, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? color : AppColors.border),
-        ),
-        child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: selected ? color : AppColors.textMuted)),
-      ),
-    );
-  }
+  static String _role(PlayerRole r) => switch (r) {
+        PlayerRole.batsman      => 'BATTER',
+        PlayerRole.bowler       => 'BOWLER',
+        PlayerRole.allRounder   => 'ALL-ROUNDER',
+        PlayerRole.wicketKeeper => 'KEEPER',
+      };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

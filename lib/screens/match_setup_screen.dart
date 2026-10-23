@@ -1,6 +1,5 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/group_cubit.dart' show GroupBloc;
 import '../bloc/match_bloc.dart';
@@ -8,7 +7,7 @@ import '../models/group_model.dart';
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/premium_header.dart';
+import '../widgets/setup_flow.dart';
 
 class MatchSetupScreen extends StatefulWidget {
   /// When set, this group is pre-selected in the group dropdown.
@@ -79,448 +78,347 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
     }
   }
 
+  bool get _groupLocked => widget.preselectedGroupId != null || widget.isRematch;
+
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Column(
+    return SetupScaffold(
+      step: SetupStep.match,
+      title: widget.isRematch ? 'Rematch' : 'New Match',
+      subtitle: const Text('Name the sides and set the overs'),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           children: [
-            // ── Gradient header ──────────────────────────────────────
-            _buildHeader(context),
-            // ── Form ─────────────────────────────────────────────────
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Team A
-                      FadeInEntrance(
-                        delay: const Duration(milliseconds: 100),
-                        offset: const Offset(0, 20),
-                        child: _fieldCard(
-                          label: 'Team A',
-                          icon: Icons.shield_rounded,
-                          color: AppColors.info,
-                          child: TextFormField(
-                            controller: _teamAController,
-                            decoration: const InputDecoration(
-                              labelText: 'Team Name',
-                              prefixIcon: Icon(Icons.shield_outlined),
-                            ),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Required'
-                                : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Team B
-                      FadeInEntrance(
-                        delay: const Duration(milliseconds: 180),
-                        offset: const Offset(0, 20),
-                        child: _fieldCard(
-                          label: 'Team B',
-                          icon: Icons.shield_rounded,
-                          color: AppColors.accent,
-                          child: TextFormField(
-                            controller: _teamBController,
-                            decoration: const InputDecoration(
-                              labelText: 'Team Name',
-                              prefixIcon: Icon(Icons.shield_outlined),
-                            ),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Required'
-                                : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Overs selector
-                      FadeInEntrance(
-                        delay: const Duration(milliseconds: 260),
-                        offset: const Offset(0, 20),
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: AppDecorations.card(),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(7),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.warning
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.timer_rounded,
-                                        size: 16, color: AppColors.warning),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  const Text('Match Overs',
-                                      style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.textPrimary)),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              ValueListenableBuilder<int>(
-                                  valueListenable: _oversNotifier,
-                                  builder: (context, overs, _) {
-                                    return Column(
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            _overBtn(Icons.remove_rounded, () {
-                                              if (overs > 1) { _oversNotifier.value--; }
-                                            }),
-                                            SizedBox(
-                                              width: 120,
-                                              child: Column(
-                                                children: [
-                                                  AnimatedCounter(
-                                                    value: overs,
-                                                    style: const TextStyle(
-                                                        fontSize: 48,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color:
-                                                            AppColors.primary,
-                                                        height: 1),
-                                                  ),
-                                                  const Text('overs',
-                                                      style: TextStyle(
-                                                          color: AppColors
-                                                              .textMuted,
-                                                          fontSize: 13,
-                                                          fontWeight:
-                                                              FontWeight.w500)),
-                                                ],
-                                              ),
-                                            ),
-                                            _overBtn(Icons.add_rounded,
-                                                () => _oversNotifier.value++),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        // Quick presets
-                                        Wrap(
-                                          spacing: 8,
-                                          children: [5, 10, 15, 20].map((o) {
-                                            final sel = overs == o;
-                                            return GestureDetector(
-                                              onTap: () =>
-                                                  _oversNotifier.value = o,
-                                              child: AnimatedContainer(
-                                                duration: const Duration(
-                                                    milliseconds: 180),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 14,
-                                                        vertical: 6),
-                                                decoration: BoxDecoration(
-                                                  color: sel
-                                                      ? AppColors.primary
-                                                      : AppColors.surfaceLight,
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                  border: Border.all(
-                                                      color: sel
-                                                          ? AppColors.primary
-                                                          : AppColors.border),
-                                                ),
-                                                child: Text(
-                                                  '$o ov',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: sel
-                                                        ? Colors.white
-                                                        : AppColors.textMuted,
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                        ),
-                                      ],
-                                    );
-                                  }),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Group selector (only shown when user has groups)
-                      if (_myGroups.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        FadeInEntrance(
-                          delay: const Duration(milliseconds: 320),
-                          offset: const Offset(0, 20),
-                          child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: AppDecorations.card(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(7),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.group_rounded,
-                                          size: 16, color: AppColors.primary),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    const Text('Assign to Group',
-                                        style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.textPrimary)),
-                                    const Spacer(),
-                                    // "Optional" when free to change; locked badge when from a group
-                                    if (widget.preselectedGroupId != null || widget.isRematch)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.primary
-                                              .withValues(alpha: 0.1),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        ),
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.lock_rounded,
-                                                size: 10,
-                                                color: AppColors.primary),
-                                            SizedBox(width: 4),
-                                            Text('Locked',
-                                                style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: AppColors.primary)),
-                                          ],
-                                        ),
-                                      )
-                                    else
-                                      const Text('Optional',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: AppColors.textMuted)),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                GestureDetector(
-                                  // Disable tap when group is pre-selected from a GroupDetailScreen or isRematch
-                                  onTap: (widget.preselectedGroupId != null || widget.isRematch)
-                                      ? null
-                                      : _showGroupPicker,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16, vertical: 14),
-                                    decoration: BoxDecoration(
-                                      color: (widget.preselectedGroupId != null || widget.isRematch)
-                                          ? AppColors.primary
-                                              .withValues(alpha: 0.06)
-                                          : AppColors.surfaceLight
-                                              .withValues(alpha: 0.6),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: (widget.preselectedGroupId != null || widget.isRematch)
-                                            ? AppColors.primary
-                                                .withValues(alpha: 0.25)
-                                            : AppColors.border,
-                                      ),
-                                    ),
-                                    child: ValueListenableBuilder<String?>(
-                                        valueListenable:
-                                            _selectedGroupIdNotifier,
-                                        builder: (context, selectedGroup, _) {
-                                          return Row(
-                                            children: [
-                                              Icon(
-                                                selectedGroup == null
-                                                    ? Icons.person_outline
-                                                    : Icons.group_outlined,
-                                                size: 20,
-                                                color: selectedGroup == null
-                                                    ? AppColors.textMuted
-                                                    : AppColors.primary,
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Text(
-                                                  _getSelectedGroupName(
-                                                      selectedGroup),
-                                                  style: TextStyle(
-                                                    fontSize: 15,
-                                                    fontWeight:
-                                                        selectedGroup == null
-                                                            ? FontWeight.w500
-                                                            : FontWeight.w600,
-                                                    color: selectedGroup == null
-                                                        ? AppColors.textMuted
-                                                        : AppColors.textPrimary,
-                                                  ),
-                                                ),
-                                              ),
-                                              // Chevron when editable, lock when locked
-                                              Icon(
-                                                (widget.preselectedGroupId != null || widget.isRematch)
-                                                    ? Icons.lock_rounded
-                                                    : Icons
-                                                        .keyboard_arrow_down_rounded,
-                                                size: (widget.preselectedGroupId != null || widget.isRematch)
-                                                    ? 16
-                                                    : 22,
-                                                color: (widget.preselectedGroupId != null || widget.isRematch)
-                                                    ? AppColors.primary
-                                                        .withValues(alpha: 0.5)
-                                                    : AppColors.textMuted,
-                                              ),
-                                            ],
-                                          );
-                                        }),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 32),
-
-                      // Submit button
-                      FadeInEntrance(
-                        delay: const Duration(milliseconds: 400),
-                        offset: const Offset(0, 20),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: AppColors.primaryGradient,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.35),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 6))
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              minimumSize: const Size.fromHeight(56),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text('Select Teams',
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700)),
-                                SizedBox(width: 10),
-                                Icon(Icons.arrow_forward_rounded, size: 20),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            FadeInEntrance(
+              offset: const Offset(0, 20),
+              child: _matchupCard(),
             ),
+            const SizedBox(height: 16),
+            FadeInEntrance(
+              delay: const Duration(milliseconds: 80),
+              offset: const Offset(0, 20),
+              child: _oversCard(),
+            ),
+            // Group selector (only shown when user has groups)
+            if (_myGroups.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              FadeInEntrance(
+                delay: const Duration(milliseconds: 160),
+                offset: const Offset(0, 20),
+                child: _groupCard(),
+              ),
+            ],
           ],
         ),
-      ), // Scaffold
-    ); // AnnotatedRegion
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return PremiumHeader(
-      category: 'NEW MATCH',
-      title: 'Match Setup',
-      trailing: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.sports_cricket_rounded,
-            color: Colors.white, size: 24),
+      ),
+      bottomBar: SetupCta(
+        label: 'Pick Squads',
+        icon: Icons.groups_rounded,
+        onTap: _submit,
       ),
     );
   }
 
-  Widget _fieldCard(
-      {required String label,
-      required IconData icon,
-      required Color color,
-      required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppDecorations.card(),
+  // ── The matchup: two crests facing off ─────────────────────────────────────
+  Widget _matchupCard() {
+    return SetupCard(
+      padding: const EdgeInsets.fromLTRB(14, 20, 14, 18),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text('THE MATCHUP',
+              style: TextStyle(
+                  fontSize: 10.5,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textMuted)),
+          const SizedBox(height: 16),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+              Expanded(child: _teamSide(_teamAController, TeamColors.a, 'TEAM A', _teamBController)),
+              Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.goldGradient,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('VS',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white)),
                 ),
-                child: Icon(icon, size: 16, color: color),
               ),
-              const SizedBox(width: 10),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+              Expanded(child: _teamSide(_teamBController, TeamColors.b, 'TEAM B', _teamAController)),
             ],
           ),
-          const SizedBox(height: 14),
-          child,
         ],
       ),
     );
   }
 
-  Widget _overBtn(IconData icon, VoidCallback onTap) {
-    return TapBounce(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
+  Widget _teamSide(TextEditingController ctrl, Color color, String tag,
+      TextEditingController other) {
+    return Column(
+      children: [
+        // Crest follows the name as it's typed
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: ctrl,
+          builder: (context, v, _) => TeamCrest(name: v.text, color: color, size: 68),
         ),
-        child: Icon(icon, size: 22, color: AppColors.textSecondary),
+        const SizedBox(height: 10),
+        Text(tag,
+            style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 1.5,
+                fontWeight: FontWeight.w800,
+                color: color)),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: ctrl,
+          textAlign: TextAlign.center,
+          textCapitalization: TextCapitalization.words,
+          maxLength: 24,
+          style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            isDense: true,
+            counterText: '',
+            hintText: 'Team name',
+            filled: true,
+            fillColor: color.withValues(alpha: 0.06),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            suffixIcon: Icon(Icons.edit_rounded, size: 14, color: color.withValues(alpha: 0.6)),
+            suffixIconConstraints: const BoxConstraints(minWidth: 26),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: color, width: 1.5),
+            ),
+            errorMaxLines: 2,
+          ),
+          validator: (v) {
+            final name = v?.trim() ?? '';
+            if (name.isEmpty) return 'Required';
+            // Teams are told apart by name (toss, innings), so they must differ.
+            if (name.toLowerCase() == other.text.trim().toLowerCase()) {
+              return 'Use a different name';
+            }
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  // ── Overs: scoreboard-style counter ────────────────────────────────────────
+  Widget _oversCard() {
+    return SetupCard(
+      child: ValueListenableBuilder<int>(
+        valueListenable: _oversNotifier,
+        builder: (context, overs, _) {
+          return Column(
+            children: [
+              SetupSectionTitle(
+                icon: Icons.timer_rounded,
+                color: AppColors.warning,
+                title: 'Overs per side',
+                caption: '${overs * 6} balls for each team',
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _stepBtn(Icons.remove_rounded,
+                      overs > 1 ? () => _oversNotifier.value-- : null),
+                  const SizedBox(width: 18),
+                  // LED scoreboard panel
+                  Container(
+                    width: 116,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B1220),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFF1E293B), width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6)),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        AnimatedCounter(
+                          value: overs,
+                          style: const TextStyle(
+                            fontSize: 46,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.accentLight,
+                            height: 1,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            shadows: [
+                              Shadow(color: Color(0x99FCD34D), blurRadius: 12),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('OVERS',
+                            style: TextStyle(
+                                fontSize: 9.5,
+                                letterSpacing: 2.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white.withValues(alpha: 0.5))),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  _stepBtn(Icons.add_rounded,
+                      overs < 50 ? () => _oversNotifier.value++ : null),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // Quick presets
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [5, 6, 8, 10, 15, 20].map((o) {
+                  final sel = overs == o;
+                  return TapBounce(
+                    onTap: () => _oversNotifier.value = o,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: 46,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: sel ? AppColors.primary : AppColors.surfaceLight,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: sel ? AppColors.primary : AppColors.border),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text('$o',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: sel ? Colors.white : AppColors.textSecondary)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _stepBtn(IconData icon, VoidCallback? onTap) {
+    return TapBounce(
+      onTap: onTap ?? () {},
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: onTap != null ? AppColors.primary.withValues(alpha: 0.08) : AppColors.borderLight,
+          shape: BoxShape.circle,
+          border: Border.all(
+              color: onTap != null ? AppColors.primary.withValues(alpha: 0.25) : AppColors.border),
+        ),
+        child: Icon(icon,
+            size: 24,
+            color: onTap != null ? AppColors.primary : AppColors.textMuted),
+      ),
+    );
+  }
+
+  // ── Group (optional, or locked when started from a group / rematch) ────────
+  Widget _groupCard() {
+    return SetupCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SetupSectionTitle(
+            icon: Icons.groups_rounded,
+            color: AppColors.primary,
+            title: 'Play for a group',
+            caption: _groupLocked
+                ? 'Locked to this group'
+                : 'Optional — group members join the squads',
+            trailing: _groupLocked
+                ? const Icon(Icons.lock_rounded, size: 16, color: AppColors.primary)
+                : null,
+          ),
+          const SizedBox(height: 14),
+          TapBounce(
+            onTap: _groupLocked ? () {} : _showGroupPicker,
+            child: ValueListenableBuilder<String?>(
+              valueListenable: _selectedGroupIdNotifier,
+              builder: (context, selectedGroup, _) {
+                final hasGroup = selectedGroup != null;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(
+                    color: hasGroup
+                        ? AppColors.primary.withValues(alpha: 0.06)
+                        : AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasGroup
+                          ? AppColors.primary.withValues(alpha: 0.3)
+                          : AppColors.border,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        hasGroup ? Icons.group_rounded : Icons.person_outline_rounded,
+                        size: 20,
+                        color: hasGroup ? AppColors.primary : AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _getSelectedGroupName(selectedGroup),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: hasGroup ? FontWeight.w700 : FontWeight.w500,
+                            color: hasGroup ? AppColors.textPrimary : AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                      if (!_groupLocked)
+                        const Icon(Icons.keyboard_arrow_down_rounded,
+                            size: 22, color: AppColors.textMuted),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

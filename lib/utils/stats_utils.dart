@@ -1,6 +1,7 @@
 import 'dart:math';
 import '../models/match_models.dart';
 import '../models/player_model.dart';
+import '../models/ball_model.dart';
 import '../models/innings_model.dart';
 import '../bloc/score_bloc.dart';
 
@@ -255,8 +256,9 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
         inn.batsmanStats.forEach((id, s) {
            if (s.isOut && s.outFielderId != null && stats.containsKey(s.outFielderId)) {
                final f = stats[s.outFielderId]!;
-               if (s.wicketType == 'Run Out') { f.runOuts++; }
-               else if (s.wicketType == 'Caught') { f.catches++; }
+               final type = Dismissal.normalize(s.wicketType);
+               if (type == Dismissal.runOut) { f.runOuts++; }
+               else if (type == Dismissal.caught) { f.catches++; }
            }
         });
       }

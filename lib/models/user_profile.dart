@@ -40,6 +40,7 @@ class UserProfile extends Equatable {
   );
 
   UserProfile copyWith({
+    String? fullName,
     String? playerRole,
     String? battingStyle,
     String? bowlingStyle,
@@ -47,7 +48,7 @@ class UserProfile extends Equatable {
     bool clearDeletedAt = false,
   }) => UserProfile(
     userId       : userId,
-    fullName     : fullName,
+    fullName     : fullName     ?? this.fullName,
     avatarUrl    : avatarUrl,
     email        : email,
     playerRole   : playerRole   ?? this.playerRole,

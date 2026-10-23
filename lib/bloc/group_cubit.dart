@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/group_model.dart';
 import '../services/group_repository.dart';
 
@@ -113,6 +114,35 @@ class GroupError extends GroupState {
   List<Object?> get props => [message, _previousGroups];
 }
 
+/// Turns a failed group call into a message fit for a snackbar. The server
+/// raises short codes (see the group RPCs); anything else is treated as a
+/// connectivity problem rather than shown raw.
+String groupErrorMessage(Object e) {
+  final code = e is PostgrestException ? e.message : '';
+  switch (code) {
+    case 'invalid_invite_code':
+      return 'Invalid code. Check the QR / code and try again.';
+    case 'invite_code_required':
+      return 'Enter an invite code.';
+    case 'group_name_required':
+    case 'name_required':
+      return 'Group name can\'t be empty.';
+    case 'not_admin':
+      return 'Only the group admin can do that.';
+    case 'cannot_kick_admin':
+      return 'The group admin can\'t be removed.';
+    case 'cannot_kick_self':
+      return 'You can\'t remove yourself.';
+    case 'not_a_member':
+      return 'You\'re no longer a member of this group.';
+    case 'not_authenticated':
+      return 'Your session expired. Please sign in again.';
+  }
+  return e is PostgrestException
+      ? 'Something went wrong. Please try again.'
+      : 'Couldn\'t reach the server. Check your connection and try again.';
+}
+
 // ── Bloc ───────────────────────────────────────────────────────
 class GroupBloc extends Bloc<GroupEvent, GroupState> {
   final GroupRepository _repo;
@@ -124,7 +154,7 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
         final list = await _repo.getMyGroups();
         emit(GroupLoaded(list));
       } catch (e) {
-        emit(GroupError(e.toString()));
+        emit(GroupError(groupErrorMessage(e)));
       }
     });
 
@@ -134,7 +164,7 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
         final group = await _repo.createGroup(event.name);
         emit(GroupCreated(groups: [group, ...prev], created: group));
       } catch (e) {
-        emit(GroupError(e.toString(), previousGroups: prev));
+        emit(GroupError(groupErrorMessage(e), previousGroups: prev));
         // Restore list so the main screen stays consistent.
         emit(GroupLoaded(prev));
       }
@@ -147,15 +177,20 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
         final updated = prev.any((g) => g.id == group.id) ? prev : [group, ...prev];
         emit(GroupJoined(groups: updated, joined: group));
       } catch (e) {
-        emit(GroupError(e.toString(), previousGroups: prev));
+        emit(GroupError(groupErrorMessage(e), previousGroups: prev));
         emit(GroupLoaded(prev));
       }
     });
 
     on<LeaveGroupEvent>((event, emit) async {
-      await _repo.leaveGroup(event.groupId);
-      final updated = state.groups.where((g) => g.id != event.groupId).toList();
-      emit(GroupLoaded(updated));
+      final prev = state.groups;
+      try {
+        await _repo.leaveGroup(event.groupId);
+        emit(GroupLoaded(prev.where((g) => g.id != event.groupId).toList()));
+      } catch (e) {
+        emit(GroupError(groupErrorMessage(e), previousGroups: prev));
+        emit(GroupLoaded(prev));
+      }
     });
 
     on<DeleteGroupEvent>((event, emit) async {
@@ -165,7 +200,7 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
         final updated = prev.where((g) => g.id != event.groupId).toList();
         emit(GroupLoaded(updated));
       } catch (e) {
-        emit(GroupError(e.toString(), previousGroups: prev));
+        emit(GroupError(groupErrorMessage(e), previousGroups: prev));
         emit(GroupLoaded(prev));
       }
     });
@@ -175,11 +210,11 @@ class GroupBloc extends Bloc<GroupEvent, GroupState> {
       try {
         await _repo.renameGroup(event.groupId, event.name);
         final updated = prev
-            .map((g) => g.id == event.groupId ? g.copyWith(name: event.name) : g)
+            .map((g) => g.id == event.groupId ? g.copyWith(name: event.name.trim()) : g)
             .toList();
         emit(GroupLoaded(updated));
       } catch (e) {
-        emit(GroupError(e.toString(), previousGroups: prev));
+        emit(GroupError(groupErrorMessage(e), previousGroups: prev));
         emit(GroupLoaded(prev));
       }
     });

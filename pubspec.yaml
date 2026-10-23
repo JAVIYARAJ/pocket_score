@@ -59,6 +59,9 @@ dependencies:
   pdf: ^3.11.0
   printing: ^5.13.1
 
+  # Network change events for the full-screen offline block
+  connectivity_plus: ^7.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

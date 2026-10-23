@@ -23,6 +23,19 @@ class ProfileRepository {
     });
   }
 
+  /// Updates the signed-in user's display name. Written to `profiles` (not auth
+  /// metadata) because Google overwrites the metadata on every sign-in.
+  Future<void> updateFullName(String fullName) async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) throw Exception('Not signed in');
+    final rows = await _client
+        .from('profiles')
+        .update({'full_name': fullName})
+        .eq('id', uid)
+        .select('id');
+    if (rows.isEmpty) throw Exception('Could not update your name');
+  }
+
   Future<DateTime> requestAccountDeletion() async {
     final result = await _client.rpc('request_account_deletion') as Map;
     return DateTime.parse(result['hard_delete_at'] as String);

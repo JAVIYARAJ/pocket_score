@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/match_models.dart';
+import '../models/ball_model.dart';
 import '../models/innings_model.dart';
 
 /// All match operations go through server-side RPC functions.
@@ -169,9 +170,10 @@ class MatchRepository {
             orElse: () => <String, dynamic>{},
           );
           if (row.isNotEmpty) {
-            if (s.wicketType == 'Caught') {
+            final type = Dismissal.normalize(s.wicketType);
+            if (type == Dismissal.caught) {
               row['catches'] = (row['catches'] as int) + 1;
-            } else if (s.wicketType == 'Run Out') {
+            } else if (type == Dismissal.runOut) {
               row['run_outs'] = (row['run_outs'] as int) + 1;
             }
           }

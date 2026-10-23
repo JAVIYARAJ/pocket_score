@@ -12,86 +12,71 @@ import '../models/player_model.dart';
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
+import '../widgets/setup_flow.dart' show CricketBallPainter;
 
 class ScoringScreen extends StatelessWidget {
   const ScoringScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    int totalOvers() =>
+        context.read<MatchBloc>().state.settings?.totalOvers ?? 0;
     return BlocListener<ScoreBloc, ScoreState>(
       listener: (context, state) {
         _syncMatchList(context, state);
-        if (state.currentInnings != null) {
-          final inn = state.currentInnings!;
-          final totalOvers =
-              context.read<MatchBloc>().state.settings?.totalOvers ?? 0;
-          final outCount = state.outPlayerIds.length + state.retiredHurtIds.length;
-          final battingLen = state.battingLineup.length;
-          bool allOut = state.isLastManStanding
-              ? outCount >= battingLen
-              : outCount >= battingLen - 1;
-
-          if (state.isSuperOver) {
-            // Super over: 1-over limit per team, 2 wickets = innings over
-            bool oversUp  = inn.legalBallsCount >= 6;
-            bool soAllOut = outCount >= 2;
-            bool soVictory = !state.isSuperOverFirstInnings &&
-                inn.totalRuns >= (state.superOverFirstInnings?.totalRuns ?? 0) + 1;
-
-            if (soVictory || oversUp || soAllOut) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (state.isSuperOverFirstInnings) {
-                  _superOverBreak(context, state);
-                } else {
-                  context.push('/match/result');
-                }
-              });
-            }
-          } else {
-            bool victory = !state.isFirstInnings &&
-                inn.totalRuns >= (state.firstInnings?.totalRuns ?? 0) + 1;
-            bool oversUp = inn.legalBallsCount >= totalOvers * 6;
-
-            if (victory || oversUp || allOut) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (state.isFirstInnings) {
-                  if (!state.pendingBowlerChange || oversUp || allOut) {
-                    _inningsBreak(context, state);
-                  }
-                } else {
-                  context.push('/match/result');
-                }
-              });
-            }
-          }
-        }
       },
-      child: BlocBuilder<ScoreBloc, ScoreState>(
-        builder: (context, state) {
-          if (state.firstInnings == null || state.currentInnings == null) {
-            return const Scaffold(
-                body: Center(child: CircularProgressIndicator()));
-          }
-          return _ScoringView(state: state);
+      child: BlocListener<ScoreBloc, ScoreState>(
+        // Navigate only when an innings *becomes* over, so later emissions
+        // (bowler pick, strike swap) can't open the break/result a second time.
+        listenWhen: (prev, curr) =>
+            !prev.isInningsOver(totalOvers()) &&
+            curr.isInningsOver(totalOvers()),
+        listener: (context, state) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) goToInningsEnd(context, state);
+          });
         },
+        child: BlocBuilder<ScoreBloc, ScoreState>(
+          builder: (context, state) {
+            if (state.firstInnings == null || state.currentInnings == null) {
+              return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()));
+            }
+            return _ScoringView(state: state);
+          },
+        ),
       ),
     );
   }
 
   // ── helpers ─────────────────────────────────────────────────
+  /// Innings break, super-over break or result — whichever follows the
+  /// innings that just ended.
+  static void goToInningsEnd(BuildContext context, ScoreState state) {
+    if (state.isSuperOver) {
+      if (state.isSuperOverFirstInnings) {
+        _superOverBreak(context, state);
+      } else {
+        context.push('/match/result');
+      }
+    } else if (state.isFirstInnings) {
+      _inningsBreak(context, state);
+    } else {
+      context.push('/match/result');
+    }
+  }
+
   static void _syncMatchList(BuildContext context, ScoreState state) {
     final ms = context.read<MatchBloc>().state;
     if (ms.matchId == null) return;
     final first = state.firstInnings;
     final second = state.secondInnings;
+    // A super over in progress means the match isn't decided yet; the result
+    // screen records the final outcome when it ends.
     final bool done = second != null &&
-        (second.totalRuns > (first?.totalRuns ?? 0) ||
-            second.legalBallsCount >=
-                (ms.settings?.totalOvers ?? 0) * 6 ||
-            (state.outPlayerIds.length + state.retiredHurtIds.length) >=
-                (state.isLastManStanding
-                    ? state.battingLineup.length
-                    : state.battingLineup.length - 1));
+        !state.isSuperOver &&
+        !state.isFirstInnings &&
+        state.isInningsOver(ms.settings?.totalOvers ?? 0);
     final aName = ms.settings?.teamAName ?? '';
     final bName = ms.settings?.teamBName ?? '';
     int? aScore, aWkts, bScore, bWkts;
@@ -1266,84 +1251,93 @@ class _ThisOver extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final balls = state.currentInnings!.balls;
-    final current = <Ball>[];
-    int legal = 0;
-    for (int i = balls.length - 1; i >= 0; i--) {
-      current.insert(0, balls[i]);
-      if (balls[i].isLegalBall) legal++;
-      if (legal >= 6) break;
+    // The over actually in progress — not simply the last six legal balls,
+    // which would mix in the previous over mid-way through this one.
+    final inn = state.currentInnings!;
+    final ovs = inn.overSummaries;
+    final completed = inn.legalBallsCount ~/ 6;
+    final List<Ball> current;
+    if (ovs.length > completed) {
+      current = ovs.last.balls;            // over in progress (may be extras only)
+    } else if (state.pendingBowlerChange && ovs.isNotEmpty) {
+      current = ovs.last.balls;            // over just finished, picking a bowler
+    } else {
+      current = const [];                  // new over, no ball yet
     }
+    final legal = current.where((b) => b.isLegalBall).length;
 
+    // One compact row: label, the over's balls, then the legal-ball count.
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecorations.card(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.fiber_manual_record,
-              size: 8, color: AppColors.primary),
-          const SizedBox(width: 8),
-          const Text('THIS OVER',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textMuted,
-                  letterSpacing: 1)),
-          const Spacer(),
-          Text('${legal}/6',
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 46,
-          child: current.isEmpty
-              ? const Center(
-                  child: Text('Waiting for first ball…',
-                      style: TextStyle(
-                          color: AppColors.textMuted, fontSize: 12)))
-              : ListView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  children: current.map(_ballChip).toList(),
-                ),
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: AppDecorations.card(radius: 14),
+      child: Row(children: [
+        const Icon(Icons.fiber_manual_record, size: 7, color: AppColors.primary),
+        const SizedBox(width: 5),
+        const Text('THIS OVER',
+            style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textMuted,
+                letterSpacing: 1)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: 30,
+            child: current.isEmpty
+                ? const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Waiting for first ball…',
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)))
+                : ListView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    children: current.map(_ballChip).toList(),
+                  ),
+          ),
         ),
+        const SizedBox(width: 8),
+        Text('$legal/6',
+            style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textMuted,
+                fontWeight: FontWeight.w700)),
       ]),
     );
   }
 
   Widget _ballChip(Ball b) {
-    Color color;
-    String label;
-    if (b.isWicket) { label = 'W'; color = AppColors.wicket; }
-    else if (b.type == BallType.wide) { label = 'WD'; color = AppColors.wide; }
-    else if (b.type == BallType.noBall) { label = b.runs > 0 ? 'Nb+${b.runs}' : 'NB'; color = AppColors.noBall; }
-    else if (b.runs == 6) { label = '6'; color = AppColors.six; }
-    else if (b.runs == 4) { label = '4'; color = AppColors.four; }
-    else if (b.runs == 0) { label = '•'; color = AppColors.dot; }
-    else { label = '${b.runs}'; color = AppColors.primary; }
+    final (label, color) = _ballFace(b);
 
     return Container(
-      margin: const EdgeInsets.only(right: 10),
-      width: 46, height: 46,
+      margin: const EdgeInsets.only(right: 6),
+      width: 30, height: 30,
       decoration: BoxDecoration(
         color: color.withValues(alpha: b.runs == 0 && !b.isWicket ? 0.12 : 0.15),
         shape: BoxShape.circle,
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
       ),
       alignment: Alignment.center,
       child: Text(label,
           style: TextStyle(
-              fontSize: label.length > 1 ? 11 : 14,
+              fontSize: label.length > 2 ? 8 : (label.length > 1 ? 9.5 : 12),
               fontWeight: FontWeight.w800,
               color: color == AppColors.dot
                   ? AppColors.textMuted
                   : color)),
     );
   }
+}
+
+/// Label and colour for one delivery, shared by the over strip and recaps.
+(String, Color) _ballFace(Ball b) {
+  if (b.isWicket) return ('W', AppColors.wicket);
+  if (b.type == BallType.wide) return ('WD', AppColors.wide);
+  if (b.type == BallType.noBall) return (b.runs > 0 ? 'Nb+${b.runs}' : 'NB', AppColors.noBall);
+  if (b.runs == 6) return ('6', AppColors.six);
+  if (b.runs == 4) return ('4', AppColors.four);
+  if (b.runs == 0) return ('•', AppColors.dot);
+  return ('${b.runs}', AppColors.primary);
 }
 
 // ── Over History ──────────────────────────────────────────────
@@ -1353,73 +1347,76 @@ class _OverHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ovs = state.currentInnings?.overSummaries ?? [];
+    final inn = state.currentInnings;
+    if (inn == null) return const SizedBox.shrink();
+    // Completed overs only (the over in progress is in "This over" above),
+    // newest first so the latest is visible without scrolling.
+    final completed = inn.legalBallsCount ~/ 6;
+    final ovs = inn.overSummaries.take(completed).toList().reversed.toList();
     if (ovs.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: AppDecorations.card(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.bar_chart_rounded, size: 15, color: AppColors.textMuted),
-          const SizedBox(width: 8),
-          const Text('OVER HISTORY',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textMuted,
-                  letterSpacing: 1)),
-        ]),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 70,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: ovs.length,
-            itemBuilder: (_, i) {
-              final ov = ovs[i];
-              final hasWkt = ov.wickets > 0;
-              return Container(
-                width: 60,
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  color: hasWkt
-                      ? AppColors.wicket.withValues(alpha: 0.07)
-                      : AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: hasWkt
-                          ? AppColors.wicket.withValues(alpha: 0.25)
-                          : AppColors.border),
-                ),
-                child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                  Text('OV ${ov.overNumber}',
-                      style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textMuted)),
-                  const SizedBox(height: 4),
-                  Text('${ov.runs}',
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: hasWkt
-                              ? AppColors.wicket
-                              : AppColors.primary,
-                          height: 1.1)),
-                  if (hasWkt)
-                    Text('${ov.wickets}W',
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 9, 0, 9),
+      decoration: AppDecorations.card(radius: 14),
+      child: Row(children: [
+        const Text('OVERS',
+            style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textMuted,
+                letterSpacing: 1)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: 28,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(right: 12),
+              itemCount: ovs.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (_, i) {
+                final ov = ovs[i];
+                final hasWkt = ov.wickets > 0;
+                final color = hasWkt ? AppColors.wicket : AppColors.primary;
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  decoration: BoxDecoration(
+                    color: hasWkt
+                        ? AppColors.wicket.withValues(alpha: 0.07)
+                        : AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: hasWkt
+                            ? AppColors.wicket.withValues(alpha: 0.25)
+                            : AppColors.border),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('${ov.overNumber}',
                         style: const TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.wicket)),
-                ]),
-              );
-            },
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textMuted)),
+                    const SizedBox(width: 5),
+                    Text('${ov.runs}',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: color)),
+                    if (hasWkt) ...[
+                      const SizedBox(width: 3),
+                      Text('${ov.wickets}W',
+                          style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.wicket)),
+                    ],
+                  ]),
+                );
+              },
+            ),
           ),
         ),
       ]),
@@ -1434,6 +1431,10 @@ class _ActionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final totalOvers = context.read<MatchBloc>().state.settings?.totalOvers ?? 0;
+    // The last over of an innings also sets pendingBowlerChange, but nobody
+    // bowls next — show the way on instead of a bowler picker.
+    if (state.isInningsOver(totalOvers)) return _InningsOverPanel(state: state);
     if (state.pendingBowlerChange) return _BowlerPicker(state: state);
 
     return Container(
@@ -1510,9 +1511,12 @@ class _ActionPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: GestureDetector(
-          onTap: () => context
-              .read<ScoreBloc>()
-              .add(RecordBall(runs: runs, type: BallType.normal, extraRuns: 0)),
+          onTap: () {
+            if (!_acceptsBalls(context)) return;
+            context
+                .read<ScoreBloc>()
+                .add(RecordBall(runs: runs, type: BallType.normal, extraRuns: 0));
+          },
           child: Container(
             height: 58,
             decoration: BoxDecoration(
@@ -1538,8 +1542,11 @@ class _ActionPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: GestureDetector(
-          onTap: () => context.read<ScoreBloc>().add(
-              RecordBall(runs: runs, type: type, extraRuns: 1)),
+          onTap: () {
+            if (!_acceptsBalls(context)) return;
+            context.read<ScoreBloc>().add(
+                RecordBall(runs: runs, type: type, extraRuns: 1));
+          },
           child: Container(
             height: 58,
             decoration: BoxDecoration(
@@ -1564,7 +1571,9 @@ class _ActionPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
         child: GestureDetector(
-          onTap: () => _noBallSheet(context),
+          onTap: () {
+            if (_acceptsBalls(context)) _noBallSheet(context);
+          },
           child: Container(
             height: 58,
             decoration: BoxDecoration(
@@ -1684,16 +1693,107 @@ class _ActionPanel extends StatelessWidget {
 }
 
 // ── Bowler Picker ──────────────────────────────────────────────
-class _BowlerPicker extends StatelessWidget {
+/// Shown in place of the scoring pad once the innings can take no more balls
+/// (e.g. after coming back from the innings break or result screen).
+class _InningsOverPanel extends StatelessWidget {
+  final ScoreState state;
+  const _InningsOverPanel({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final inn = state.currentInnings!;
+    final next = state.isSuperOver
+        ? (state.isSuperOverFirstInnings ? 'Super Over break' : 'See the result')
+        : (state.isFirstInnings ? 'Innings break' : 'See the result');
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 18, 20, MediaQuery.of(context).padding.bottom + 18),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [BoxShadow(color: Color(0x14000000), blurRadius: 20, offset: Offset(0, -6))],
+      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.flag_rounded, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Innings complete',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              Text('${inn.battingTeamName} ${inn.totalRuns}/${inn.totalWickets} (${inn.overDisplay} ov)',
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        TapBounce(
+          onTap: () => ScoringScreen.goToInningsEnd(context, state),
+          child: Container(
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(next,
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// End-of-over break: an LED-scoreboard recap of the over just bowled, then
+/// the bowling attack as swipeable cards — "Bring on …" picks the next bowler.
+class _BowlerPicker extends StatefulWidget {
   final ScoreState state;
   const _BowlerPicker({required this.state});
 
   @override
+  State<_BowlerPicker> createState() => _BowlerPickerState();
+}
+
+/// One candidate bowler with everything the card needs.
+class _BowlerOption {
+  final Player player;
+  final BowlerStats? stats;
+  final int oversUsed;
+  final bool blocked;
+  final String? tag;
+  const _BowlerOption(this.player, this.stats, this.oversUsed, this.blocked, this.tag);
+}
+
+class _BowlerPickerState extends State<_BowlerPicker> {
+  late final PageController _pages = PageController(viewportFraction: 0.64);
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final bowlers      = state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
+    final state        = widget.state;
+    final inn          = state.currentInnings!;
     final settings     = context.read<MatchBloc>().state.settings;
     final configuredMax = settings?.maxOversPerBowler;
-    final bowlStats    = state.currentInnings?.bowlerStatsMap ?? {};
+    final bowlStats    = inn.bowlerStatsMap;
+    final lastBowler   = state.bowlingLineup.where((p) => p.id == state.bowlerId).firstOrNull;
+    // The same bowler can't bowl two overs in a row.
+    final candidates   = state.bowlingLineup.where((p) => p.id != state.bowlerId).toList();
 
     // ── Intelligent effective max ──────────────────────────────────────────
     // If the bowling lineup is too small to cover all overs within the
@@ -1713,165 +1813,520 @@ class _BowlerPicker extends StatelessWidget {
       }
     }
 
+    int used(Player p) => (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6;
     // All candidates exhausted their effective limit (should never permanently block)
-    final allAtLimit = effectiveMax != null && bowlers.every(
-        (p) => (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6 >= effectiveMax!);
+    final allAtLimit = effectiveMax != null && candidates.every((p) => used(p) >= effectiveMax!);
+    bool blocked(Player p) => effectiveMax != null && used(p) >= effectiveMax && !allAtLimit;
+
+    // Smart tags: who took wickets, who's been tight, who's fresh.
+    final bowled = candidates.where((p) => (bowlStats[p.id]?.ballsBowled ?? 0) > 0).toList();
+    final topWickets = bowled.fold<int>(0, (m, p) => max(m, bowlStats[p.id]!.wickets));
+    final econCandidates = bowled.where((p) => bowlStats[p.id]!.ballsBowled >= 6).toList()
+      ..sort((a, b) => bowlStats[a.id]!.economy.compareTo(bowlStats[b.id]!.economy));
+    final mostEconomical = econCandidates.firstOrNull?.id;
+    String? tagFor(Player p) {
+      if (blocked(p)) return 'LIMIT REACHED';
+      final st = bowlStats[p.id];
+      if (st == null || st.ballsBowled == 0) return 'FRESH LEGS';
+      if (topWickets > 0 && st.wickets == topWickets) return 'WICKET TAKER';
+      if (p.id == mostEconomical) return 'MOST ECONOMICAL';
+      return null;
+    }
+
+    final options = [
+      for (final p in candidates)
+        _BowlerOption(p, bowlStats[p.id], used(p), blocked(p), tagFor(p)),
+    ]..sort((a, b) => (a.blocked ? 1 : 0).compareTo(b.blocked ? 1 : 0));
+    if (options.isEmpty) return const SizedBox.shrink();
+    final index = _index.clamp(0, options.length - 1);
+    final chosen = options[index];
+
+    final completed = inn.legalBallsCount ~/ 6;
+    final ovs = inn.overSummaries;
+    final lastOver = completed > 0 && completed <= ovs.length ? ovs[completed - 1] : null;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(
-          20, 24, 20, MediaQuery.of(context).padding.bottom + 24),
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [BoxShadow(color: Color(0x1F000000), blurRadius: 24, offset: Offset(0, -8))],
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text('OVER COMPLETE',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.accent,
-                    letterSpacing: 1)),
-          ),
-        ]),
-        const SizedBox(height: 10),
-        const Align(
-          alignment: Alignment.centerLeft,
-          child: Text('Select Next Bowler',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
-        ),
-
-        // Auto-adjusted limit notice
-        if (limitAutoAdjusted) ...[
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.info.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
-            ),
-            child: Row(children: [
-              const Icon(Icons.auto_fix_high_rounded, size: 14, color: AppColors.info),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Limit auto-adjusted to $effectiveMax ov/bowler '
-                  '(${state.bowlingLineup.length} bowlers, ${settings?.totalOvers} overs needed)',
-                  style: const TextStyle(fontSize: 11, color: AppColors.info, fontWeight: FontWeight.w600),
-                ),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(0, 14, 0, MediaQuery.of(context).padding.bottom + 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (lastOver != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _LedOverBoard(
+                overNumber: completed,
+                bowlerName: lastBowler?.name,
+                over: lastOver,
+                totalRuns: inn.totalRuns,
+                totalWickets: inn.totalWickets,
               ),
+            ),
+          const SizedBox(height: 16),
+
+          // ── Title + resting bowler ────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('OVER ${completed + 1}',
+                      style: const TextStyle(
+                          fontSize: 10.5,
+                          letterSpacing: 1.8,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.wicket)),
+                  const Text('Bring on the bowler',
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                ]),
+              ),
+              if (lastBowler != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.airline_seat_recline_normal_rounded,
+                        size: 13, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text('${lastBowler.name} resting',
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                  ]),
+                ),
             ]),
           ),
-        ],
-
-        // All-at-limit override banner (rare edge case)
-        if (allAtLimit) ...[
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+          if (limitAutoAdjusted || allAtLimit)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
+              child: Row(children: [
+                Icon(allAtLimit ? Icons.warning_amber_rounded : Icons.auto_fix_high_rounded,
+                    size: 14, color: allAtLimit ? AppColors.warning : AppColors.info),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    allAtLimit
+                        ? 'Everyone has bowled $effectiveMax overs — pick anyone to continue'
+                        : 'Limit raised to $effectiveMax overs each so ${state.bowlingLineup.length} bowlers cover ${settings?.totalOvers} overs',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: allAtLimit ? AppColors.warning : AppColors.info),
+                  ),
+                ),
+              ]),
             ),
-            child: Row(children: [
-              const Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'All bowlers at $effectiveMax-over limit — tap any to override.',
-                  style: const TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w600),
+          const SizedBox(height: 12),
+
+          // ── The bowling attack ───────────────────────────────────────
+          SizedBox(
+            height: 212,
+            child: PageView.builder(
+              controller: _pages,
+              itemCount: options.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (context, i) => AnimatedBuilder(
+                animation: _pages,
+                builder: (context, child) {
+                  final page = _pages.hasClients && _pages.position.haveDimensions
+                      ? (_pages.page ?? index.toDouble())
+                      : index.toDouble();
+                  final focus = (1 - (page - i).abs()).clamp(0.0, 1.0);
+                  return Transform.scale(
+                    scale: 0.86 + 0.14 * focus,
+                    child: Opacity(opacity: 0.55 + 0.45 * focus, child: child),
+                  );
+                },
+                child: GestureDetector(
+                  onTap: () => _pages.animateToPage(i,
+                      duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic),
+                  child: _BowlerCard(option: options[i], limit: effectiveMax),
                 ),
               ),
-            ]),
+            ),
           ),
-        ],
+          const SizedBox(height: 10),
+          // Page dots
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = 0; i < options.length; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                width: i == index ? 18 : 6,
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  color: i == index ? AppColors.primary : AppColors.border,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 14),
 
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: bowlers.length,
-            itemBuilder: (ctx, i) {
-              final p         = bowlers[i];
-              final oversUsed = (bowlStats[p.id]?.ballsBowled ?? 0) ~/ 6;
-              final atLimit   = effectiveMax != null &&
-                  oversUsed >= effectiveMax && !allAtLimit;
-
-              return GestureDetector(
-                onTap: atLimit
-                    ? () {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(
-                            '${p.name} has bowled $oversUsed/$effectiveMax overs — limit reached',
-                          ),
+          // ── Bring on … ───────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TapBounce(
+              onTap: chosen.blocked
+                  ? () {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(
+                          content: Text('${chosen.player.name} has bowled '
+                              '${chosen.oversUsed}/$effectiveMax overs — limit reached'),
                           duration: const Duration(seconds: 2),
                           behavior: SnackBarBehavior.floating,
                         ));
-                      }
-                    : () => context.read<ScoreBloc>().add(ChangeBowler(p.id)),
-                child: Opacity(
-                  opacity: atLimit ? 0.42 : 1.0,
-                  child: Container(
-                    width: 80,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: AppDecorations.card(radius: 14),
-                    child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: atLimit
-                            ? AppColors.danger.withValues(alpha: 0.1)
-                            : AppColors.primary.withValues(alpha: 0.1),
-                        child: Text(p.name[0],
-                            style: TextStyle(
-                                color: atLimit ? AppColors.danger : AppColors.primary,
-                                fontWeight: FontWeight.w800)),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(p.isGuest ? '${p.name} (Guest)' : p.name,
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center),
-                      if (effectiveMax != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          '$oversUsed/$effectiveMax ov',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: atLimit ? AppColors.danger : AppColors.textMuted,
-                          ),
-                        ),
-                      ],
-                    ]),
-                  ),
+                    }
+                  : () => context.read<ScoreBloc>().add(ChangeBowler(chosen.player.id)),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: chosen.blocked
+                      ? null
+                      : const LinearGradient(colors: [Color(0xFFB91C1C), AppColors.wicket]),
+                  color: chosen.blocked ? AppColors.surfaceLight : null,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: chosen.blocked
+                      ? null
+                      : [BoxShadow(color: AppColors.wicket.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
                 ),
-              );
-            },
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (!chosen.blocked) ...[
+                    const SizedBox.square(dimension: 20, child: CustomPaint(painter: CricketBallPainter())),
+                    const SizedBox(width: 10),
+                  ],
+                  Flexible(
+                    child: Text(
+                      chosen.blocked
+                          ? '${chosen.player.name} has hit the limit'
+                          : 'Bring on ${chosen.player.name}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: chosen.blocked ? AppColors.textMuted : Colors.white),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
           ),
-        ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Stadium-style LED board summarising the over just bowled.
+class _LedOverBoard extends StatelessWidget {
+  final int overNumber;
+  final String? bowlerName;
+  final OverSummary over;
+  final int totalRuns;
+  final int totalWickets;
+
+  const _LedOverBoard({
+    required this.overNumber,
+    required this.bowlerName,
+    required this.over,
+    required this.totalRuns,
+    required this.totalWickets,
+  });
+
+  static const _amber = Color(0xFFFCD34D);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0B1220),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF1E293B), width: 3),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              'END OF OVER $overNumber${bowlerName != null ? '  ·  ${bowlerName!.toUpperCase()}' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w800,
+                color: _amber,
+                shadows: [Shadow(color: Color(0x99FCD34D), blurRadius: 8)],
+              ),
+            ),
+          ),
+          Text('$totalRuns/$totalWickets',
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  fontFeatures: [FontFeature.tabularFigures()])),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          // Runs in the over, big LED digits
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${over.runs}',
+                style: const TextStyle(
+                  fontSize: 38,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  color: _amber,
+                  shadows: [Shadow(color: Color(0x99FCD34D), blurRadius: 14)],
+                )),
+            Text(over.wickets > 0 ? 'RUNS · ${over.wickets}W' : 'RUNS',
+                style: TextStyle(
+                    fontSize: 9,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white.withValues(alpha: 0.5))),
+          ]),
+          const SizedBox(width: 14),
+          Container(width: 1, height: 40, color: Colors.white.withValues(alpha: 0.12)),
+          const SizedBox(width: 12),
+          // Each delivery as a lit bulb
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [for (final b in over.balls) _bulb(b)],
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _bulb(Ball b) {
+    final (label, color) = _ballFace(b);
+    final isDot = color == AppColors.dot;
+    final glow = isDot ? Colors.white.withValues(alpha: 0.25) : color;
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isDot ? const Color(0xFF1E293B) : color,
+        boxShadow: isDot ? null : [BoxShadow(color: glow.withValues(alpha: 0.7), blurRadius: 8)],
+      ),
+      alignment: Alignment.center,
+      child: Text(label,
+          style: TextStyle(
+              fontSize: label.length > 2 ? 8 : (label.length > 1 ? 9.5 : 12),
+              fontWeight: FontWeight.w900,
+              color: isDot ? Colors.white.withValues(alpha: 0.6) : Colors.white)),
+    );
+  }
+}
+
+/// Trading-card style bowler: tag, avatar, spell figures and an over-limit
+/// meter drawn as cricket balls.
+class _BowlerCard extends StatelessWidget {
+  final _BowlerOption option;
+  final int? limit;
+  const _BowlerCard({required this.option, required this.limit});
+
+  static const _tagColors = {
+    'WICKET TAKER': Color(0xFFFCA5A5),
+    'MOST ECONOMICAL': Color(0xFF93C5FD),
+    'FRESH LEGS': Color(0xFFFCD34D),
+    'LIMIT REACHED': Color(0xFFE5E7EB),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final p = option.player;
+    final st = option.stats;
+    final blocked = option.blocked;
+    final hasBowled = st != null && st.ballsBowled > 0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: blocked
+            ? const LinearGradient(colors: [Color(0xFF6B7280), Color(0xFF4B5563)])
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF065F46), Color(0xFF064E3B), Color(0xFF022C22)],
+              ),
+        boxShadow: [
+          BoxShadow(
+            color: (blocked ? Colors.black : AppColors.primaryDark).withValues(alpha: 0.3),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(children: [
+          // Big faint ball in the corner for texture
+          Positioned(
+            right: -26,
+            top: -26,
+            child: Opacity(
+              opacity: blocked ? 0.08 : 0.16,
+              child: const SizedBox.square(dimension: 110, child: CustomPaint(painter: CricketBallPainter())),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (option.tag != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: (_tagColors[option.tag] ?? Colors.white).withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: (_tagColors[option.tag] ?? Colors.white).withValues(alpha: 0.5)),
+                  ),
+                  child: Text(option.tag!,
+                      style: TextStyle(
+                          fontSize: 8.5,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w900,
+                          color: _tagColors[option.tag] ?? Colors.white)),
+                )
+              else
+                const SizedBox(height: 19),
+              const Spacer(),
+              Row(children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.15),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(p.name[0].toUpperCase(),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+                    Text(p.isGuest ? 'GUEST' : 'BOWLER',
+                        style: TextStyle(
+                            fontSize: 9,
+                            letterSpacing: 1.3,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white.withValues(alpha: 0.55))),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              // Spell figures
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(children: [
+                  _fig('O', hasBowled ? st.oversBowled : '0'),
+                  _fig('R', '${st?.runsConceded ?? 0}'),
+                  _fig('W', '${st?.wickets ?? 0}', highlight: (st?.wickets ?? 0) > 0),
+                  _fig('ECON', hasBowled ? st.economy.toStringAsFixed(1) : '–'),
+                ]),
+              ),
+              if (limit != null) ...[
+                const SizedBox(height: 9),
+                // Over limit as cricket balls: bowled ones solid, the rest outlined
+                Row(children: [
+                  for (var i = 0; i < limit! && i < 8; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: i < option.oversUsed
+                          ? const SizedBox.square(dimension: 13, child: CustomPaint(painter: CricketBallPainter()))
+                          : Container(
+                              width: 13,
+                              height: 13,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.45), width: 1.4),
+                              ),
+                            ),
+                    ),
+                  const Spacer(),
+                  Text('${option.oversUsed}/$limit OV',
+                      style: TextStyle(
+                          fontSize: 9.5,
+                          letterSpacing: 0.8,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white.withValues(alpha: 0.7))),
+                ]),
+              ],
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _fig(String label, String value, {bool highlight = false}) {
+    return Expanded(
+      child: Column(children: [
+        Text(value,
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: highlight ? const Color(0xFFFCA5A5) : Colors.white)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 8,
+                letterSpacing: 1,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.5))),
       ]),
     );
   }
 }
 
 // ── Wicket Dialog ──────────────────────────────────────────────
+/// Whether a delivery can be recorded right now. False once the innings is
+/// over (e.g. a quick double tap on the final ball), or while a batting slot
+/// is empty after a retirement — the ball would have no batter to credit.
+bool _acceptsBalls(BuildContext context) {
+  final state = context.read<ScoreBloc>().state;
+  final totalOvers = context.read<MatchBloc>().state.settings?.totalOvers ?? 0;
+  if (state.isInningsOver(totalOvers)) return false;
+  final missing = state.strikerId.isEmpty
+      ? 'striker'
+      : (!state.isLastManStanding && state.nonStrikerId.isEmpty)
+          ? 'non-striker'
+          : null;
+  if (missing != null) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+          content: Text('Pick the $missing first — tap the empty batter slot.')));
+    return false;
+  }
+  return true;
+}
+
 void _wicketDialog(BuildContext context, ScoreState state) {
+  if (!_acceptsBalls(context)) return;
   final bloc = context.read<ScoreBloc>();
   final avail = _BatTile._available(state);
 
@@ -1879,6 +2334,7 @@ void _wicketDialog(BuildContext context, ScoreState state) {
   String? playerId = state.strikerId;
   int runs = 0;
   bool runOutRunsConfirmed = false;
+  bool runOutVictimPicked = false;
   String? fielderId;
   String? nextId;
 
@@ -2140,6 +2596,44 @@ void _wicketDialog(BuildContext context, ScoreState state) {
                       onTap: () => setSt(() => nextId = avail[i].id),
                       child: _pickerChip(avail[i].name, false),
                     ),
+                  ),
+                ),
+              ] else if (isRunOut &&
+                  avail.isEmpty &&
+                  state.nonStrikerId.isNotEmpty &&
+                  !runOutVictimPicked) ...[
+                // Last pair: no next batter to pick, but either end can be run out.
+                const Text('Who is out?',
+                    style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 6),
+                const Text('The other batter stays on as the last man.',
+                    style: TextStyle(
+                        color: AppColors.textMuted, fontSize: 13)),
+                const SizedBox(height: 16),
+                Row(children: [
+                  _selBtn(
+                      state.battingLineup
+                          .firstWhere((p) => p.id == state.strikerId)
+                          .name,
+                      state.strikerId,
+                      playerId,
+                      (id) => setSt(() => playerId = id)),
+                  const SizedBox(width: 10),
+                  _selBtn(
+                      state.battingLineup
+                          .firstWhere((p) => p.id == state.nonStrikerId)
+                          .name,
+                      state.nonStrikerId,
+                      playerId,
+                      (id) => setSt(() => playerId = id)),
+                ]),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => setSt(() => runOutVictimPicked = true),
+                    child: const Text('Continue'),
                   ),
                 ),
               ] else if (nextId == null && avail.isNotEmpty) ...[

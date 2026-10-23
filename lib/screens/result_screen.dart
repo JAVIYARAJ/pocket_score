@@ -46,7 +46,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
 
     String result;
     if (second.totalRuns > first.totalRuns) {
-      final w = _savedState.battingLineup.length - 1 - second.totalWickets;
+      final w = second.wicketsInHand(fallbackSquadSize: _savedState.battingLineup.length);
       result = '${second.battingTeamName} won by $w wicket${w != 1 ? "s" : ""}!';
     } else if (second.totalRuns < first.totalRuns) {
       result = '${first.battingTeamName} won by ${first.totalRuns - second.totalRuns} runs!';
@@ -163,7 +163,7 @@ class _ResultScreenState extends State<ResultScreen> with SingleTickerProviderSt
     String winnerSubtext;
     bool isTie = false;
     if (second.totalRuns > first.totalRuns) {
-      final w = _savedState.battingLineup.length - 1 - second.totalWickets;
+      final w = second.wicketsInHand(fallbackSquadSize: _savedState.battingLineup.length);
       winnerTeam    = second.battingTeamName;
       winnerSubtext = 'won by $w wicket${w != 1 ? "s" : ""}';
     } else if (second.totalRuns < first.totalRuns) {

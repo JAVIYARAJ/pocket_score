@@ -24,7 +24,9 @@ Future<Uint8List> generateMatchResultPdf(
 ) async {
   final doc = pw.Document();
   final first = scoreState.firstInnings!;
-  final second = scoreState.secondInnings!;
+  // Null while the first innings is still going (the scorecard and its PDF
+  // can be opened mid-match).
+  final second = scoreState.secondInnings;
   final soFirst = scoreState.superOverFirstInnings;
   final soSecond = scoreState.superOverSecondInnings;
   final hasSuperOver = soFirst != null && soSecond != null;
@@ -70,8 +72,15 @@ Future<Uint8List> generateMatchResultPdf(
       winnerName = 'MATCH TIED';
       winnerSub  = 'SUPER OVER TIED!';
     }
+  } else if (second == null) {
+    winnerName = 'MATCH IN PROGRESS';
+    winnerSub  = 'FIRST INNINGS · ${first.battingTeamName} ${first.totalRuns}/${first.totalWickets}';
+  } else if (!_chaseFinished(first, second, totalOvers, scoreState.battingLineup.length)) {
+    final need = first.totalRuns + 1 - second.totalRuns;
+    winnerName = 'MATCH IN PROGRESS';
+    winnerSub  = '${second.battingTeamName} NEED $need TO WIN';
   } else if (second.totalRuns > first.totalRuns) {
-    final w = scoreState.battingLineup.length - 1 - second.totalWickets;
+    final w = second.wicketsInHand(fallbackSquadSize: scoreState.battingLineup.length);
     winnerName = second.battingTeamName;
     winnerSub  = 'WON BY $w WICKET${w != 1 ? "S" : ""}';
   } else if (second.totalRuns < first.totalRuns) {
@@ -354,7 +363,13 @@ Future<Uint8List> generateMatchResultPdf(
                               ),
                               child: pw.Column(
                                 crossAxisAlignment: pw.CrossAxisAlignment.center,
-                                children: [
+                                children: second == null
+                                    ? [
+                                        pw.Text('SECOND INNINGS', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _textMuted, letterSpacing: 1)),
+                                        pw.SizedBox(height: 12),
+                                        pw.Text('Yet to bat', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: _textMuted)),
+                                      ]
+                                    : [
                                   pw.Text(second.battingTeamName.toUpperCase(), style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _textMuted, letterSpacing: 1)),
                                   pw.SizedBox(height: 12),
                                   pw.Text('${second.totalRuns}/${second.totalWickets}', style: pw.TextStyle(fontSize: 42, fontWeight: pw.FontWeight.bold, color: _textDark)),
@@ -407,7 +422,8 @@ Future<Uint8List> generateMatchResultPdf(
 
                       // ── DETAILED PERFORMANCES ─────────────────────────────
                       _inningsPerformers('1st Innings  -  ${first.battingTeamName}', first, first),
-                      _inningsPerformers('2nd Innings  -  ${second.battingTeamName}', second, second),
+                      if (second != null)
+                        _inningsPerformers('2nd Innings  -  ${second.battingTeamName}', second, second),
 
                       pw.Spacer(),
 
@@ -471,4 +487,12 @@ Future<Uint8List> generateMatchResultPdf(
 String _monthName(int month) {
   const names = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
   return names[month - 1];
+}
+
+/// Whether the chase is over: target passed, overs used up, or all out
+/// (last-man-standing: a side of N can lose N wickets).
+bool _chaseFinished(Innings first, Innings second, int totalOvers, int squadSize) {
+  if (second.totalRuns > first.totalRuns) return true;
+  if (totalOvers > 0 && second.legalBallsCount >= totalOvers * 6) return true;
+  return second.wicketsInHand(fallbackSquadSize: squadSize) == 0;
 }

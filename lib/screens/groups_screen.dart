@@ -18,6 +18,7 @@ import '../bloc/group_cubit.dart'
         JoinGroupEvent;
 import '../models/group_model.dart';
 import '../theme/app_theme.dart';
+import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
 
@@ -251,60 +252,31 @@ class _GroupCard extends StatelessWidget {
 class _EmptyGroups extends StatelessWidget {
   final VoidCallback onCreate;
   final VoidCallback onJoin;
-
   const _EmptyGroups({required this.onCreate, required this.onJoin});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.group_rounded,
-                  size: 40, color: AppColors.primary),
-            ),
-            const SizedBox(height: 24),
-            const Text('No Groups Yet',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 10),
-            const Text(
-              'Create a group and invite your cricket friends, or join one with an invite code.',
-              style: TextStyle(
-                  fontSize: 13, color: AppColors.textMuted, height: 1.5),
-              textAlign: TextAlign.center,
-              maxLines: 3,
-            ),
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _EmptyBtn(
-                    label: 'Create Group',
-                    icon: Icons.add_rounded,
-                    primary: true,
-                    onTap: onCreate),
-                const SizedBox(width: 12),
-                _EmptyBtn(
-                    label: 'Join Group',
-                    icon: Icons.group_add_rounded,
-                    primary: false,
-                    onTap: onJoin),
-              ],
-            ),
-          ],
-        ),
+    return EmptyState(
+      art: EmptyArt.groups,
+      title: 'Assemble your squad',
+      message:
+          'Create a group and invite your cricket friends, or join one with an invite code.',
+      action: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          _EmptyBtn(
+              label: 'Create Group',
+              icon: Icons.add_rounded,
+              primary: true,
+              onTap: onCreate),
+          _EmptyBtn(
+              label: 'Join Group',
+              icon: Icons.group_add_rounded,
+              primary: false,
+              onTap: onJoin),
+        ],
       ),
     );
   }
@@ -444,8 +416,8 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
           ));
         } else if (state is GroupError) {
           _loading.value = false;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Failed to create group. Please try again.'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(state.message),
             backgroundColor: AppColors.danger,
           ));
         }
@@ -458,7 +430,9 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
         ),
         child: Form(
           key: _formKey,
-          child: Column(
+          // Scrolls when the keyboard leaves too little room on small phones.
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Handle
@@ -540,6 +514,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 },
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -672,7 +647,7 @@ class _JoinGroupSheetState extends State<_JoinGroupSheet> {
           if (_useQr) _qrCtrl.start();   // allow re-scan
           setState(() { _loading = false; _scanned = false; });
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Invalid code. Check the QR / code and try again.'),
+            content: Text(state.message),
             backgroundColor: AppColors.danger,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -685,7 +660,9 @@ class _JoinGroupSheetState extends State<_JoinGroupSheet> {
           color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
+        // Scrolls when the QR viewfinder (or keyboard) leaves too little room.
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // Handle
@@ -723,6 +700,7 @@ class _JoinGroupSheetState extends State<_JoinGroupSheet> {
               child: _useQr ? _buildQrMode() : _buildCodeMode(),
             ),
           ],
+          ),
         ),
       ),
     );

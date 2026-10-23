@@ -13,6 +13,7 @@ import 'bloc/match_list_bloc.dart';
 import 'bloc/score_bloc.dart';
 import 'bloc/group_cubit.dart' show GroupBloc, LoadGroups;
 import 'bloc/profile_bloc.dart';
+import 'bloc/connectivity_cubit.dart';
 import 'bloc/auth_cubit.dart'
     show
         AuthBloc,
@@ -26,6 +27,7 @@ import 'services/match_repository.dart';
 import 'services/group_repository.dart';
 import 'services/profile_repository.dart';
 import 'theme/app_theme.dart';
+import 'widgets/offline_gate.dart';
 import 'screens/splash_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
@@ -95,18 +97,24 @@ class PocketScoreApp extends StatefulWidget {
 class _PocketScoreAppState extends State<PocketScoreApp> {
   final _client = Supabase.instance.client;
   late final AuthBloc _authBloc;
+  late final ConnectivityCubit _connectivity;
   late final GoRouter _router;
 
   @override
   void initState() {
     super.initState();
     _authBloc = AuthBloc(_client);
+    // Created before the router so its back-button handler runs first
+    // (see ConnectivityCubit.didPopRoute).
+    _connectivity = ConnectivityCubit(
+        probeHost: Uri.parse(SupabaseConfig.supabaseUrl).host);
     _router = _buildRouter();
   }
 
   @override
   void dispose() {
     _authBloc.close();
+    _connectivity.close();
     super.dispose();
   }
 
@@ -277,6 +285,7 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
     return MultiBlocProvider(
       providers: [
         BlocProvider.value(value: _authBloc),
+        BlocProvider.value(value: _connectivity),
         BlocProvider(create: (_) => MatchBloc()),
         BlocProvider(create: (_) => MatchListBloc(MatchRepository(_client))),
         BlocProvider(create: (_) => ScoreBloc(MatchRepository(_client))),
@@ -296,6 +305,7 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
           title: 'Pocket Score',
           debugShowCheckedModeBanner: false,
           routerConfig: _router,
+          builder: (context, child) => OfflineGate(child: child!),
           theme: AppTheme.light.copyWith(
             textTheme: outfitBase.copyWith(
               displayLarge: outfitBase.displayLarge

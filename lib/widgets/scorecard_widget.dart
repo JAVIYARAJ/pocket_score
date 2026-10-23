@@ -144,7 +144,10 @@ class ScorecardView extends StatelessWidget {
                         ),
                         child: const Text('SUPER OVER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5)),
                       ),
-                    Text(inn.battingTeamName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white), overflow: TextOverflow.ellipsis),
+                    Text(inn.battingTeamName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -182,12 +185,10 @@ class ScorecardView extends StatelessWidget {
           decoration: const BoxDecoration(color: AppColors.card),
           child: Column(
             children: [
-              _headerRow(['Batsman', 'R', 'B', '4s', '6s', 'SR'], flexes: [5, 1, 1, 1, 1, 2]),
+              _statHeader('Batter', _batCols),
               ...bats.entries.map((e) {
                 final player = _findPlayer(inn, e.key);
-                final name = player != null
-                    ? (player.isGuest ? '${player.name} (Guest)' : player.name)
-                    : _findName(inn, e.key);
+                final name = player?.name ?? _findName(inn, e.key);
                 final s = e.value;
                 return _batRow(context, inn, name, s, player: player);
               }),
@@ -221,12 +222,10 @@ class ScorecardView extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _headerRow(['Bowler', 'O', 'R', 'W', 'Eco', 'Ext'], flexes: [5, 2, 1, 1, 2, 3]),
+              _statHeader('Bowler', _bowlCols),
               ...bowls.entries.map((e) {
                 final player = _findPlayer(inn, e.key);
-                final name = player != null
-                    ? (player.isGuest ? '${player.name} (Guest)' : player.name)
-                    : _findName(inn, e.key);
+                final name = player?.name ?? _findName(inn, e.key);
                 final s = e.value;
                 return _bowlRow(context, name, s, player: player);
               }),
@@ -284,18 +283,81 @@ class ScorecardView extends StatelessWidget {
     );
   }
 
+  // Fixed-width stat columns (label, width) so names get all remaining space
+  // and long names wrap instead of pushing the numbers out of line.
+  static const _batCols  = [('R', 30.0), ('B', 28.0), ('4s', 26.0), ('6s', 26.0), ('SR', 46.0)];
+  static const _bowlCols = [('O', 34.0), ('R', 30.0), ('W', 26.0), ('Eco', 42.0)];
+
+  Widget _statHeader(String first, List<(String, double)> cols) {
+    const style = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textMuted, letterSpacing: 0.5);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: const BoxDecoration(color: AppColors.surfaceLight),
+      child: Row(children: [
+        Expanded(child: Text(first, style: style)),
+        for (final (label, w) in cols)
+          SizedBox(width: w, child: Text(label, style: style, textAlign: TextAlign.end)),
+      ]),
+    );
+  }
+
+  Widget _statCells(List<String> values, List<(String, double)> cols, {FontWeight weight = FontWeight.w500}) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < values.length; i++)
+        SizedBox(
+          width: cols[i].$2,
+          child: Text(values[i],
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: i == 0 ? FontWeight.w700 : weight,
+                  color: AppColors.textPrimary)),
+        ),
+    ]);
+  }
+
+  /// Name (up to two lines) with an optional profile-link icon.
+  Widget _nameText(String text, {required Color color, required bool canTap, double size = 13}) {
+    return Text.rich(
+      TextSpan(children: [
+        TextSpan(text: text),
+        if (canTap)
+          const WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(Icons.open_in_new_rounded, size: 11, color: AppColors.textMuted),
+            ),
+          ),
+      ]),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: size, fontWeight: FontWeight.bold, color: color, height: 1.25),
+    );
+  }
+
+  Widget _guestTag() => Container(
+        margin: const EdgeInsets.only(right: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppColors.textMuted.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Text('GUEST',
+            style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w800, color: AppColors.textMuted, letterSpacing: 0.4)),
+      );
+
   Widget _batRow(BuildContext context, Innings inn, String name, BatsmanStats s, {Player? player}) {
     final isNotOut = !s.isOut;
     final canTap = player != null && !player.isGuest && player.userId != null;
-    final otherVals = ['${s.runs}', '${s.ballsFaced}', '${s.fours}', '${s.sixes}', s.strikeRate.toStringAsFixed(1)];
-    final otherFlexes = [1, 1, 1, 1, 2];
 
     return InkWell(
       onTap: canTap
           ? () => context.push('/player/${player.userId}', extra: {'displayName': player.name})
           : null,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: isNotOut ? AppColors.accent.withValues(alpha: 0.04) : null,
           border: const Border(bottom: BorderSide(color: AppColors.border)),
@@ -303,53 +365,32 @@ class ScorecardView extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              flex: 5,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${isNotOut ? "* " : ""}$name',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: isNotOut ? AppColors.accent : AppColors.textPrimary),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (canTap) ...[
-                        const SizedBox(width: 4),
-                        const Icon(Icons.open_in_new_rounded,
-                            size: 11, color: AppColors.textMuted),
-                      ],
-                    ],
-                  ),
+                  _nameText('${isNotOut ? "* " : ""}$name',
+                      color: isNotOut ? AppColors.accent : AppColors.textPrimary,
+                      canTap: canTap),
                   const SizedBox(height: 2),
-                  Text(
-                    _getDismissalInfo(inn, s),
-                    style: const TextStyle(
-                        fontSize: 9.5,
-                        color: AppColors.textMuted,
-                        fontWeight: FontWeight.w500),
-                    maxLines: 2,
-                    softWrap: true,
-                  ),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (player?.isGuest ?? false) _guestTag(),
+                    Expanded(
+                      child: Text(
+                        _getDismissalInfo(inn, s),
+                        style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ]),
                 ],
               ),
             ),
-            ...List.generate(otherVals.length, (index) {
-              return Expanded(
-                flex: otherFlexes[index],
-                child: Text(
-                  otherVals[index],
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                  textAlign: TextAlign.start,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              );
-            }),
+            const SizedBox(width: 6),
+            _statCells([
+              '${s.runs}', '${s.ballsFaced}', '${s.fours}', '${s.sixes}',
+              s.strikeRate.toStringAsFixed(1),
+            ], _batCols),
           ],
         ),
       ),
@@ -358,6 +399,11 @@ class ScorecardView extends StatelessWidget {
 
   Widget _bowlRow(BuildContext context, String name, BowlerStats s, {Player? player}) {
     final canTap = player != null && !player.isGuest && player.userId != null;
+    final extras = [
+      if (s.wides > 0) '${s.wides} wd',
+      if (s.noBalls > 0) '${s.noBalls} nb',
+    ].join(' · ');
+    final isGuest = player?.isGuest ?? false;
     return InkWell(
       onTap: canTap
           ? () => context.push('/player/${player.userId}', extra: {'displayName': player.name})
@@ -370,30 +416,23 @@ class ScorecardView extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              flex: 5,
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (canTap) ...[
-                    const SizedBox(width: 4),
-                    const Icon(Icons.open_in_new_rounded,
-                        size: 11, color: AppColors.textMuted),
-                  ],
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _nameText(name, color: AppColors.textPrimary, canTap: canTap, size: 12.5),
+                if (isGuest || extras.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(children: [
+                    if (isGuest) _guestTag(),
+                    if (extras.isNotEmpty)
+                      Text(extras,
+                          style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted, fontWeight: FontWeight.w500)),
+                  ]),
                 ],
-              ),
+              ]),
             ),
-            Expanded(flex: 2, child: Text(s.oversBowled, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-            Expanded(flex: 1, child: Text('${s.runsConceded}', style: const TextStyle(fontSize: 12))),
-            Expanded(flex: 1, child: Text('${s.wickets}', style: const TextStyle(fontSize: 12))),
-            Expanded(flex: 2, child: Text(s.economy.toStringAsFixed(1), style: const TextStyle(fontSize: 12))),
-            Expanded(flex: 3, child: Text('${s.wides}wd ${s.noBalls}nb', style: const TextStyle(fontSize: 12, color: AppColors.textMuted))),
+            const SizedBox(width: 6),
+            _statCells([
+              s.oversBowled, '${s.runsConceded}', '${s.wickets}', s.economy.toStringAsFixed(1),
+            ], _bowlCols),
           ],
         ),
       ),
@@ -418,12 +457,10 @@ class ScorecardView extends StatelessWidget {
 
   String _findName(Innings inn, String id) {
     try {
-      final p = inn.battingPlayers.firstWhere((p) => p.id == id);
-      return p.isGuest ? '${p.name} (Guest)' : p.name;
+      return inn.battingPlayers.firstWhere((p) => p.id == id).name;
     } catch (_) {}
     try {
-      final p = inn.bowlingPlayers.firstWhere((p) => p.id == id);
-      return p.isGuest ? '${p.name} (Guest)' : p.name;
+      return inn.bowlingPlayers.firstWhere((p) => p.id == id).name;
     } catch (_) {
       return '—';
     }

@@ -12,12 +12,14 @@ import '../bloc/profile_bloc.dart'
         ProfileState,
         ProfileLoaded,
         ProfileError,
-        UpdatePlayerPreferences,
+        UpdateFullName,
         RequestAccountDeletion,
         CancelAccountDeletion,
         AccountDeletionRequested,
         AccountDeletionCancelled;
 import '../theme/app_theme.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/player_card_sheet.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
 
@@ -260,6 +262,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final role        = profile?.playerRole   ?? 'All-Rounder';
     final battingStyle = profile?.battingStyle ?? 'Right-hand Bat';
     final bowlingStyle = profile?.bowlingStyle ?? 'Right-arm Fast';
+    final savedName   = profile?.fullName?.trim();
+    final displayName = savedName != null && savedName.isNotEmpty
+        ? savedName
+        : (user.userMetadata?['name'] as String? ?? 'Scorer');
 
     final rating = myStats?.impactRankScore?.round() ?? 60;
     final ratingColor = rating >= 80 ? Colors.amber : (rating >= 60 ? Colors.cyanAccent : AppColors.textMuted);
@@ -364,7 +370,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   color: AppColors.primary,
                                   child: Center(
                                     child: Text(
-                                      (user.userMetadata?['name'] as String? ?? 'P')[0].toUpperCase(),
+                                      displayName[0].toUpperCase(),
                                       style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white),
                                     ),
                                   ),
@@ -380,13 +386,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 4),
-                                Text(
-                                  user.userMetadata?['name'] as String? ?? 'Scorer',
-                                  style: const TextStyle(
-                                    fontSize: 19,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    letterSpacing: -0.5,
+                                TapBounce(
+                                  onTap: () => _showEditNameSheet(context, displayName),
+                                  child: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 19,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                            letterSpacing: -0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.12),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(Icons.edit_rounded, color: Colors.white70, size: 12),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(height: 6),
@@ -474,7 +500,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                       // Edit Button
                       TapBounce(
-                        onTap: () => _showEditProfileSheet(context, user, role, battingStyle, bowlingStyle),
+                        onTap: () => PlayerCardSheet.show(context),
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -537,7 +563,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ── BATTING CAREER STATS PANEL ──
   Widget _buildBattingStats(PlayerStats? myStats) {
     if (myStats == null || myStats.inningsBatted == 0) {
-      return _buildEmptyStatsBanner('No Batting stats recorded yet.\nPlay matches to update your career stats.');
+      return _buildEmptyStatsBanner(EmptyArt.batting, 'Yet to face a ball', 'Play matches to build your batting career stats.');
     }
 
     return Column(
@@ -569,7 +595,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ── BOWLING CAREER STATS PANEL ──
   Widget _buildBowlingStats(PlayerStats? myStats) {
     if (myStats == null || myStats.matchesBowled == 0) {
-      return _buildEmptyStatsBanner('No Bowling stats recorded yet.\nPlay matches to update your career stats.');
+      return _buildEmptyStatsBanner(EmptyArt.bowling, 'Yet to bowl an over', 'Play matches to build your bowling career stats.');
     }
 
     return Column(
@@ -598,22 +624,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildEmptyStatsBanner(String text) {
+  Widget _buildEmptyStatsBanner(EmptyArt art, String title, String text) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
       decoration: AppDecorations.card(),
-      child: Column(
-        children: [
-          const Icon(Icons.sports_cricket_rounded, size: 40, color: AppColors.textMuted),
-          const SizedBox(height: 12),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.5, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
+      child: EmptyState(art: art, title: title, message: text, compact: true),
     );
   }
 
@@ -704,14 +719,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 iconColor: AppColors.primary,
                 label: 'Member Since',
                 value: memberSince,
-              ),
-              const Divider(height: 1, color: AppColors.border, indent: 56),
-              _InfoRow(
-                icon: Icons.fingerprint_rounded,
-                iconColor: AppColors.textMuted,
-                label: 'Account ID',
-                value: user.id.length > 8 ? '${user.id.substring(0, 8)}…' : user.id,
-                mono: true,
               ),
             ],
           ),
@@ -837,6 +844,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: EdgeInsets.fromLTRB(
@@ -845,7 +853,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           color: AppColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
@@ -951,6 +960,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1042,292 +1052,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── CUSTOM PLAYER CARD EDITING SHEET ──
-  // ── CUSTOM PLAYER CARD EDITING SHEET ──
-  String _getRoleEmoji(String role) {
-    switch (role) {
-      case 'Batsman': return '🏏';
-      case 'Bowler': return '⚾';
-      case 'All-Rounder': return '⚡';
-      case 'Wicketkeeper': return '🧤';
-      default: return '🏏';
-    }
-  }
-
-  String _getBattingEmoji(String style) {
-    switch (style) {
-      case 'Right-hand Bat': return '👉';
-      case 'Left-hand Bat': return '👈';
-      default: return '🏏';
-    }
-  }
-
-  String _getBowlingEmoji(String style) {
-    switch (style) {
-      case 'Right-arm Fast': return '⚡';
-      case 'Right-arm Spin': return '🌀';
-      case 'Left-arm Fast': return '⚡';
-      case 'Left-arm Spin': return '🌀';
-      default: return '❌';
-    }
-  }
-
-  Widget _buildCustomSelectorCard({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-    String? iconEmoji,
-  }) {
-    return TapBounce(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.08)
-              : AppColors.surfaceLight.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: isSelected ? 1.5 : 1,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.08),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-              : [],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (iconEmoji != null) ...[
-              Text(iconEmoji, style: const TextStyle(fontSize: 14)),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showEditProfileSheet(BuildContext context, User user, String currentRole, String currentBatting, String currentBowling) {
-    String selectedRole = currentRole;
-    String selectedBatting = currentBatting;
-    String selectedBowling = currentBowling;
-
+  void _showEditNameSheet(BuildContext context, String currentName) {
     showModalBottomSheet(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(context).padding.bottom + 24),
-              decoration: const BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40, height: 4,
-                      decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.badge_rounded,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Player Customization',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            'Personalize your cricket profile card',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── ROLE SELECTOR ──
-                  const Row(
-                    children: [
-                      Icon(Icons.sports_cricket_rounded, size: 14, color: AppColors.primary),
-                      SizedBox(width: 6),
-                      Text(
-                        'PLAYER ROLE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textMuted,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: ['Batsman', 'Bowler', 'All-Rounder', 'Wicketkeeper'].map((r) {
-                      return _buildCustomSelectorCard(
-                        label: r,
-                        isSelected: selectedRole == r,
-                        iconEmoji: _getRoleEmoji(r),
-                        onTap: () => setSheetState(() => selectedRole = r),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── BATTING SELECTOR ──
-                  const Row(
-                    children: [
-                      Icon(Icons.pan_tool_rounded, size: 14, color: AppColors.primary),
-                      SizedBox(width: 6),
-                      Text(
-                        'BATTING STYLE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textMuted,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: ['Right-hand Bat', 'Left-hand Bat'].map((b) {
-                      return _buildCustomSelectorCard(
-                        label: b,
-                        isSelected: selectedBatting == b,
-                        iconEmoji: _getBattingEmoji(b),
-                        onTap: () => setSheetState(() => selectedBatting = b),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── BOWLING SELECTOR ──
-                  const Row(
-                    children: [
-                      Icon(Icons.adjust_rounded, size: 14, color: AppColors.primary),
-                      SizedBox(width: 6),
-                      Text(
-                        'BOWLING STYLE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textMuted,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8, runSpacing: 8,
-                    children: ['Right-arm Fast', 'Right-arm Spin', 'Left-arm Fast', 'Left-arm Spin', 'None'].map((w) {
-                      return _buildCustomSelectorCard(
-                        label: w,
-                        isSelected: selectedBowling == w,
-                        iconEmoji: _getBowlingEmoji(w),
-                        onTap: () => setSheetState(() => selectedBowling = w),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 28),
-
-                  // Save Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          onPressed: () {
-                            context.read<ProfileBloc>().add(
-                              UpdatePlayerPreferences(
-                                playerRole   : selectedRole,
-                                battingStyle : selectedBatting,
-                                bowlingStyle : selectedBowling,
-                              ),
-                            );
-                            Navigator.pop(context);
-                          },
-                          child: const Text('Save Card', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => _EditNameSheet(
+        initialName: currentName,
+        onSave: (name) =>
+            context.read<ProfileBloc>().add(UpdateFullName(name)),
+      ),
     );
   }
 }
@@ -1376,19 +1111,169 @@ class CricketPitchPainter extends CustomPainter {
 // ─────────────────────────────────────────────────────────────────────────────
 // REUSABLE DISPLAY ELEMENTS
 // ─────────────────────────────────────────────────────────────────────────────
+// ── EDIT NAME SHEET ──
+class _EditNameSheet extends StatefulWidget {
+  final String initialName;
+  final ValueChanged<String> onSave;
+
+  const _EditNameSheet({required this.initialName, required this.onSave});
+
+  @override
+  State<_EditNameSheet> createState() => _EditNameSheetState();
+}
+
+class _EditNameSheetState extends State<_EditNameSheet> {
+  static const _minLength = 2;
+  static const _maxLength = 30;
+
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialName);
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    // Collapse runs of whitespace so "  Raj   J " saves as "Raj J".
+    final name = _controller.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.length < _minLength) {
+      setState(() => _error = 'Name must be at least $_minLength characters');
+      return;
+    }
+    if (name != widget.initialName) widget.onSave(name);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Container(
+        padding: EdgeInsets.fromLTRB(24, 20, 24, MediaQuery.of(context).padding.bottom + 24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.edit_rounded, color: AppColors.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Edit Name',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Shown to your groups, scorecards and leaderboards',
+                          style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                maxLength: _maxLength,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _save(),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+                decoration: InputDecoration(
+                  hintText: 'Your name',
+                  errorText: _error,
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                  filled: true,
+                  fillColor: AppColors.surfaceLight,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      onPressed: _save,
+                      child: const Text('Save Name', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String label;
   final String value;
-  final bool mono;
 
   const _InfoRow({
     required this.icon,
     required this.iconColor,
     required this.label,
     required this.value,
-    this.mono = false,
   });
 
   @override
@@ -1413,11 +1298,10 @@ class _InfoRow extends StatelessWidget {
               value,
               textAlign: TextAlign.end,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: mono ? 12 : 13,
+              style: const TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
-                color: mono ? AppColors.textMuted : AppColors.textPrimary,
-                fontFamily: mono ? 'monospace' : null,
+                color: AppColors.textPrimary,
               ),
             ),
           ),

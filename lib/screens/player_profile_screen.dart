@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
+import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
 
@@ -505,7 +506,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
 
   // ── Batting tab ──────────────────────────────────────────────────────────
   Widget _battingTab(PlayerStats s) {
-    if (s.inningsBatted == 0) return _empty('No batting data yet.');
+    if (s.inningsBatted == 0) return _empty(EmptyArt.batting, 'Yet to face a ball', 'Batting stats appear after their first innings.');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -544,7 +545,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
 
   // ── Bowling tab ──────────────────────────────────────────────────────────
   Widget _bowlingTab(PlayerStats s) {
-    if (s.matchesBowled == 0) return _empty('No bowling data yet.');
+    if (s.matchesBowled == 0) return _empty(EmptyArt.bowling, 'Yet to bowl an over', 'Bowling stats appear after their first spell.');
     final bestFigures = s.bestBowlingWickets != null
         ? '${s.bestBowlingWickets}/${s.bestBowlingRuns}'
         : '—';
@@ -590,7 +591,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
     final bat  = s.battingRankScore;
     final bowl = s.bowlingRankScore;
     if (ovr == null && bat == null && bowl == null) {
-      return _empty('Not enough data to compute an impact rating.');
+      return _empty(EmptyArt.stats, 'No impact rating yet', 'A few more matches are needed to compute an impact rating.');
     }
 
     return Column(
@@ -886,20 +887,8 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
         ),
       );
 
-  Widget _empty(String msg) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32),
-        child: Center(
-          child: Column(children: [
-            const Icon(Icons.sports_cricket_rounded,
-                size: 48, color: AppColors.textMuted),
-            const SizedBox(height: 12),
-            Text(msg,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.textMuted, fontSize: 13)),
-          ]),
-        ),
-      );
+  Widget _empty(EmptyArt art, String title, String msg) =>
+      EmptyState(art: art, title: title, message: msg, compact: true);
 
   String _overs(int balls) => '${balls ~/ 6}.${balls % 6}';
 

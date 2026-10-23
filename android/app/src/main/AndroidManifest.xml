@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Release builds only get network access if it's declared here; the
+         debug/profile manifests add it for development builds only. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="pocket_score"
         android:name="${applicationName}"

@@ -11,13 +11,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../bloc/auth_cubit.dart' show AuthBloc;
 import '../bloc/group_cubit.dart'
-    show GroupBloc, LeaveGroupEvent, DeleteGroupEvent, RenameGroupEvent;
+    show GroupBloc, LeaveGroupEvent, DeleteGroupEvent, RenameGroupEvent, groupErrorMessage;
 import '../bloc/match_bloc.dart';
 import '../models/group_model.dart';
 import '../models/match_models.dart';
+import '../models/player_model.dart';
 import '../services/group_repository.dart';
+import '../services/guest_repository.dart';
 import '../bloc/score_bloc.dart';
 import '../theme/app_theme.dart';
+import '../widgets/add_guest_sheet.dart';
+import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
 import '../widgets/leaderboard_widgets.dart';
@@ -839,6 +843,8 @@ class _MatchesTabState extends State<_MatchesTab>
   bool              _loading   = true;
   String?           _error;
   RealtimeChannel?  _channel;
+  // Only the newest fetch may update the list (realtime events can overlap).
+  int               _fetchSeq  = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -858,14 +864,16 @@ class _MatchesTabState extends State<_MatchesTab>
 
   // ── Initial + refresh fetch via RPC ────────────────────────────────────────
   Future<void> _fetch() async {
+    final seq = ++_fetchSeq;
     try {
       final matches = await widget.repo.getGroupMatches(widget.groupId);
-      if (mounted) {
+      if (mounted && seq == _fetchSeq) {
         setState(() { _matches = matches; _loading = false; _error = null; });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() { _error = e.toString(); _loading = false; });
+      // Keep the list we have through a network blip.
+      if (mounted && seq == _fetchSeq && (_loading || _error != null)) {
+        setState(() { _error = groupErrorMessage(e); _loading = false; });
       }
     }
   }
@@ -885,7 +893,10 @@ class _MatchesTabState extends State<_MatchesTab>
           ),
           callback: (_) => _fetch(),
         )
-        .subscribe();
+        // Resync on every (re)join — events during a dropped connection are lost.
+        .subscribe((status, _) {
+          if (status == RealtimeSubscribeStatus.subscribed && mounted) _fetch();
+        });
   }
 
   @override
@@ -901,16 +912,16 @@ class _MatchesTabState extends State<_MatchesTab>
 
     if (_error != null) {
       return _CentreMsg(
-          icon : Icons.wifi_off_rounded,
+          art  : EmptyArt.offline,
           title: 'Could not load matches',
           sub  : _error!);
     }
 
     if (_matches.isEmpty) {
       return const _CentreMsg(
-        icon : Icons.sports_cricket_rounded,
-        title: 'No matches yet',
-        sub  : 'Start a match and assign it to this group.',
+        art  : EmptyArt.matches,
+        title: 'The pitch is waiting',
+        sub  : 'No matches in this group yet. Start one and pick this group to see it here.',
       );
     }
 
@@ -1109,11 +1120,13 @@ class _TeamScore extends StatelessWidget {
       crossAxisAlignment: align,
       children: [
         Text(name,
+            textAlign: align == CrossAxisAlignment.end ? TextAlign.end : TextAlign.start,
             style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary),
-            maxLines: 1,
+                color: AppColors.textPrimary,
+                height: 1.2),
+            maxLines: 2,
             overflow: TextOverflow.ellipsis),
         if (score != null) ...[
           const SizedBox(height: 2),
@@ -1148,7 +1161,6 @@ class _LeaderboardTab extends StatefulWidget {
 
 class _LeaderboardTabState extends State<_LeaderboardTab>
     with AutomaticKeepAliveClientMixin {
-  final ValueNotifier<int> _tabNotifier = ValueNotifier<int>(0);
   late final Future<List<MatchSummary>> _future;
 
   @override
@@ -1156,12 +1168,6 @@ class _LeaderboardTabState extends State<_LeaderboardTab>
     super.initState();
     // Stored once — prevents a new network call on every rebuild.
     _future = widget.repo.getGroupMatches(widget.groupId);
-  }
-
-  @override
-  void dispose() {
-    _tabNotifier.dispose();
-    super.dispose();
   }
 
   @override
@@ -1181,212 +1187,23 @@ class _LeaderboardTabState extends State<_LeaderboardTab>
         }
         if (snap.hasError) {
           return _CentreMsg(
-              icon: Icons.bar_chart_outlined,
+              art: EmptyArt.offline,
               title: 'Could not load stats',
               sub: snap.error.toString());
         }
         final matches = snap.data ?? const [];
-        final statsMap = calculateAllPlayerStats(
+        final players = calculateAllPlayerStats(
           matches,
           const [],
           scopeGroupId: widget.groupId,
-        );
-            final baseStatsList =
-                statsMap.values.where((s) => s.matches > 0).toList();
+        ).values.where((s) => s.matches > 0).toList();
 
-            return ValueListenableBuilder<int>(
-              valueListenable: _tabNotifier,
-              builder: (context, tabIndex, child) {
-                final statsList = List<PlayerStats>.from(baseStatsList);
-                statsList.sort((a, b) {
-                  double sA = tabIndex == 0
-                      ? (a.battingRankScore ?? -1.0)
-                      : tabIndex == 1
-                          ? (a.bowlingRankScore ?? -1.0)
-                          : (a.impactRankScore ?? -1.0);
-                  double sB = tabIndex == 0
-                      ? (b.battingRankScore ?? -1.0)
-                      : tabIndex == 1
-                          ? (b.bowlingRankScore ?? -1.0)
-                          : (b.impactRankScore ?? -1.0);
-                  return sB.compareTo(sA);
-                });
-
-                return Column(
-                  children: [
-                    // Tab selector
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(28),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                          border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
-                        ),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final tabWidth = constraints.maxWidth / 3;
-                            return SizedBox(
-                              height: 38,
-                              child: Stack(
-                                children: [
-                                  AnimatedPositioned(
-                                    duration: const Duration(milliseconds: 300),
-                                    curve: Curves.fastOutSlowIn,
-                                    left: tabIndex * tabWidth,
-                                    top: 0,
-                                    bottom: 0,
-                                    width: tabWidth,
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary,
-                                        borderRadius: BorderRadius.circular(24),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppColors.primary.withValues(alpha: 0.25),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 3),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      _tabChip('Batters', 0, tabIndex),
-                                      _tabChip('Bowlers', 1, tabIndex),
-                                      _tabChip('Impact', 2, tabIndex),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
-                        ),
-                      ),
-                    ),
-                    // List
-                    Expanded(
-                      child: statsList.isEmpty
-                          ? const _CentreMsg(
-                              icon: Icons.analytics_outlined,
-                              title: 'No stats yet',
-                              sub: 'Complete matches in this group to see rankings.',
-                            )
-                          : AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 400),
-                              switchInCurve: Curves.easeOut,
-                              switchOutCurve: Curves.easeIn,
-                              child: _LeaderboardList(
-                                key: ValueKey('list_tab_$tabIndex'),
-                                statsList: statsList,
-                                tabIndex: tabIndex,
-                                groupId: widget.groupId,
-                              ),
-                            ),
-                    ),
-                  ],
-                );
-              },
-            );
-      },
-    );
-  }
-
-  Widget _tabChip(String label, int i, int currentIndex) {
-    final active = currentIndex == i;
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _tabNotifier.value = i,
-        child: Container(
-          height: 38,
-          alignment: Alignment.center,
-          child: AnimatedDefaultTextStyle(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.fastOutSlowIn,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-              color: active ? Colors.white : AppColors.textMuted,
-              fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
-            ),
-            child: Text(label),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _LeaderboardList extends StatelessWidget {
-  final List<PlayerStats> statsList;
-  final int tabIndex;
-  final String groupId;
-
-  const _LeaderboardList({
-    required this.statsList,
-    required this.tabIndex,
-    required this.groupId, required ValueKey<String> key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final validStats = statsList.where((p) {
-      final s = tabIndex == 0
-          ? p.battingRankScore
-          : tabIndex == 1
-              ? p.bowlingRankScore
-              : p.impactRankScore;
-      return s != null;
-    }).toList();
-    final top3 = validStats.take(3).toList();
-    final hasPodium = top3.isNotEmpty;
-
-    return ListView.builder(
-      key: ValueKey('grp_list_${tabIndex}_$groupId'),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-      itemCount: statsList.length + (hasPodium ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (hasPodium && index == 0) {
-          return LeaderboardTopThreePodium(
-            key: ValueKey('grp_podium_${tabIndex}_$groupId'),
-            top3,
-            tabIndex,
-          );
-        }
-        final itemIndex = hasPodium ? index - 1 : index;
-        final p = statsList[itemIndex];
-        final score = tabIndex == 0
-            ? p.battingRankScore
-            : tabIndex == 1
-                ? p.bowlingRankScore
-                : p.impactRankScore;
-        final prevScore = tabIndex == 0
-            ? p.previousBattingRankScore
-            : tabIndex == 1
-                ? p.previousBowlingRankScore
-                : p.previousImpactRankScore;
-
-        return FadeInEntrance(
-          key: ValueKey('grp_item_${p.id}_$tabIndex'),
-          delay: Duration(milliseconds: 60 * (index + 2)),
-          offset: const Offset(0, 20),
-          child: LeaderboardRankCard(
-            key: ValueKey('grp_card_${p.id}'),
-            stats: p,
-            tabIndex: tabIndex,
-            rank: itemIndex + 1,
-            score: score,
-            prevScore: prevScore,
+        return LeaderboardBoard(
+          players: players,
+          empty: const _CentreMsg(
+            art: EmptyArt.stats,
+            title: 'The podium is empty',
+            sub: 'Finish a match in this group and the rankings will show up here.',
           ),
         );
       },
@@ -1421,7 +1238,9 @@ abstract class MembersState {}
 class MembersLoading extends MembersState {}
 class MembersLoaded extends MembersState {
   final List<GroupMember> members;
-  MembersLoaded(this.members);
+  /// The group's saved guests (people without the app), shared by all members.
+  final List<Player> guests;
+  MembersLoaded(this.members, this.guests);
 }
 class MembersError extends MembersState {
   final String message;
@@ -1430,20 +1249,47 @@ class MembersError extends MembersState {
 
 class MembersCubit extends Cubit<MembersState> {
   final GroupRepository repo;
+  final GuestRepository guestRepo;
   final String groupId;
 
-  MembersCubit({required this.repo, required this.groupId}) : super(MembersLoading()) {
+  MembersCubit({required this.repo, required this.guestRepo, required this.groupId})
+      : super(MembersLoading()) {
     load();
   }
 
-  Future<void> load() async {
-    emit(MembersLoading());
+  Future<void> load({bool quiet = false}) async {
+    if (!quiet) emit(MembersLoading());
     try {
-      final members = await repo.getGroupMembers(groupId);
-      emit(MembersLoaded(members));
+      final results = await Future.wait([
+        repo.getGroupMembers(groupId),
+        // Members still show if only the guest list fails.
+        guestRepo.getSavedGuests(groupId).catchError((Object _) => <Player>[]),
+      ]);
+      if (isClosed) return;
+      emit(MembersLoaded(
+          results[0] as List<GroupMember>, results[1] as List<Player>));
     } catch (e) {
-      emit(MembersError(e.toString()));
+      if (!isClosed) emit(MembersError(groupErrorMessage(e)));
     }
+  }
+
+  /// Saves each name to the group's guests; returns how many failed.
+  Future<int> addGuests(List<(String, PlayerRole)> guests) async {
+    var failed = 0;
+    for (final (name, role) in guests) {
+      try {
+        await guestRepo.saveGuest(groupId, name, role);
+      } catch (_) {
+        failed++;
+      }
+    }
+    await load(quiet: true);
+    return failed;
+  }
+
+  Future<void> removeGuest(String id) async {
+    await guestRepo.deleteSavedGuest(id);
+    await load(quiet: true);
   }
 
   Future<void> kickMember(String userId) async {
@@ -1466,7 +1312,11 @@ class _MembersTabState extends State<_MembersTab>
   @override
   void initState() {
     super.initState();
-    _cubit = MembersCubit(repo: widget.repo, groupId: widget.groupId);
+    _cubit = MembersCubit(
+      repo: widget.repo,
+      guestRepo: GuestRepository(Supabase.instance.client),
+      groupId: widget.groupId,
+    );
   }
 
   @override
@@ -1522,7 +1372,83 @@ class _MembersTabState extends State<_MembersTab>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to remove: ${e.toString()}'),
+          content: Text(groupErrorMessage(e)),
+          backgroundColor: AppColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    }
+  }
+
+  void _showAddGuest() {
+    // The sheet calls onAdd once per name (bulk mode), so collect them and
+    // save as one batch after it closes.
+    final added = <(String, PlayerRole)>[];
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => AddGuestSheet(onAdd: (name, role) => added.add((name, role))),
+    ).then((_) async {
+      if (added.isEmpty) return;
+      final failed = await _cubit.addGuests(added);
+      if (!mounted) return;
+      final saved = added.length - failed;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(failed == 0
+            ? (saved == 1
+                ? '${added.first.$1} added as a guest.'
+                : '$saved guests added.')
+            : "Couldn't add $failed of ${added.length} guests. Check your connection and try again."),
+        backgroundColor: failed == 0 ? AppColors.success : AppColors.danger,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    });
+  }
+
+  Future<void> _removeGuest(Player guest) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Remove Guest',
+            style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary)),
+        content: Text(
+          'Remove "${guest.name}" from this group\'s guests? Past scorecards keep their name.',
+          style: const TextStyle(
+              color: AppColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove',
+                style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _cubit.removeGuest(guest.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(groupErrorMessage(e)),
           backgroundColor: AppColors.danger,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -1546,42 +1472,75 @@ class _MembersTabState extends State<_MembersTab>
         }
         if (state is MembersError) {
           return _CentreMsg(
-              icon: Icons.people_outline_rounded,
+              art: EmptyArt.offline,
               title: 'Could not load members',
               sub: state.message);
         }
         if (state is MembersLoaded) {
           final members = state.members;
-          if (members.isEmpty) {
-            return const _CentreMsg(
-              icon: Icons.people_outline_rounded,
-              title: 'No members yet',
-              sub: 'Share the invite code to add friends.',
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
-            itemCount: members.length,
-            itemBuilder: (ctx, i) {
-              final m         = members[i];
-              // Admins can kick non-admin members that are not themselves.
-              final canKick   = widget.isAdmin &&
-                  !m.isAdmin &&
-                  m.userId != widget.currentUserId;
-              return FadeInEntrance(
-                key: ValueKey(m.userId),
-                delay: Duration(milliseconds: 50 * i),
-                offset: const Offset(0, 12),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _MemberTile(
-                    member: m,
-                    canKick: canKick,
-                    onKick: canKick ? () => _kickMember(m) : null,
-                  ),
+          final guests  = state.guests;
+          return RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: () => _cubit.load(quiet: true),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
+              children: [
+                _MembersSectionHeader(
+                  title: 'Members',
+                  count: members.length,
+                  icon: Icons.verified_rounded,
+                  color: AppColors.primary,
                 ),
-              );
-            },
+                const SizedBox(height: 10),
+                for (final (i, m) in members.indexed)
+                  FadeInEntrance(
+                    key: ValueKey(m.userId),
+                    delay: Duration(milliseconds: 50 * i),
+                    offset: const Offset(0, 12),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      // Admins can kick non-admin members that are not themselves.
+                      child: Builder(builder: (_) {
+                        final canKick = widget.isAdmin &&
+                            !m.isAdmin &&
+                            m.userId != widget.currentUserId;
+                        return _MemberTile(
+                          member: m,
+                          canKick: canKick,
+                          onKick: canKick ? () => _kickMember(m) : null,
+                        );
+                      }),
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                _MembersSectionHeader(
+                  title: 'Guests',
+                  count: guests.length,
+                  icon: Icons.person_outline_rounded,
+                  color: AppColors.accent,
+                  action: _AddGuestButton(onTap: _showAddGuest),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "Friends who play with you but don't have the app. "
+                  'Everyone in the group can pick them when scoring.',
+                  style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 10),
+                if (guests.isEmpty)
+                  _NoGuestsCard(onAdd: _showAddGuest)
+                else
+                  for (final g in guests)
+                    Padding(
+                      key: ValueKey(g.id),
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _GuestTile(
+                        guest: g,
+                        onRemove: () => _removeGuest(g),
+                      ),
+                    ),
+              ],
+            ),
           );
         }
         return const SizedBox.shrink();
@@ -1733,45 +1692,240 @@ class _MemberTile extends StatelessWidget {
   }
 }
 
+class _MembersSectionHeader extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color color;
+  final Widget? action;
+
+  const _MembersSectionHeader({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.color,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary)),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text('$count',
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+        ),
+        const Spacer(),
+        if (action != null) action!,
+      ],
+    );
+  }
+}
+
+class _AddGuestButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddGuestButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return TapBounce(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.25),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_add_alt_1_rounded, size: 15, color: Colors.white),
+            SizedBox(width: 6),
+            Text('Add',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoGuestsCard extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _NoGuestsCard({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return TapBounce(
+      onTap: onAdd,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_add_alt_1_rounded,
+                  color: AppColors.accent, size: 22),
+            ),
+            const SizedBox(height: 10),
+            const Text('No guests yet',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 3),
+            const Text('Tap to add players who join your games',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GuestTile extends StatelessWidget {
+  final Player guest;
+  final VoidCallback onRemove;
+  const _GuestTile({required this.guest, required this.onRemove});
+
+  static String _roleLabel(PlayerRole role) => switch (role) {
+        PlayerRole.batsman      => 'Batsman',
+        PlayerRole.bowler       => 'Bowler',
+        PlayerRole.allRounder   => 'All-Rounder',
+        PlayerRole.wicketKeeper => 'Wicketkeeper',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          // Outlined avatar sets guests apart from app members
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.accent.withValues(alpha: 0.4), width: 1.5),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              guest.name.isNotEmpty ? guest.name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.accent),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(guest.name,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 3),
+                Text(_roleLabel(guest.role),
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('Guest',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent)),
+          ),
+          const SizedBox(width: 12),
+          TapBounce(
+            onTap: onRemove,
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Icon(Icons.close_rounded,
+                  size: 16, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable centered empty/error message
 // ─────────────────────────────────────────────────────────────────────────────
 class _CentreMsg extends StatelessWidget {
-  final IconData icon;
+  final EmptyArt art;
   final String title;
   final String sub;
 
   const _CentreMsg({
-    required this.icon,
+    required this.art,
     required this.title,
     required this.sub,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon,
-                size: 52, color: AppColors.textMuted.withValues(alpha: 0.2)),
-            const SizedBox(height: 16),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textMuted)),
-            const SizedBox(height: 6),
-            Text(sub,
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.textMuted),
-                textAlign: TextAlign.center),
-          ],
-        ),
-      ),
-    );
+    return EmptyState(art: art, title: title, message: sub);
   }
 }
 

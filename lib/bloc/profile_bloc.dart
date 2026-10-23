@@ -29,6 +29,14 @@ class UpdatePlayerPreferences extends ProfileEvent {
   List<Object?> get props => [playerRole, battingStyle, bowlingStyle];
 }
 
+class UpdateFullName extends ProfileEvent {
+  final String fullName;
+  const UpdateFullName(this.fullName);
+
+  @override
+  List<Object?> get props => [fullName];
+}
+
 class RequestAccountDeletion extends ProfileEvent {
   const RequestAccountDeletion();
 }
@@ -117,6 +125,24 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
         }
       } catch (e) {
         emit(ProfileError(e.toString()));
+      }
+    });
+
+    on<UpdateFullName>((event, emit) async {
+      final current = state is ProfileLoaded
+          ? (state as ProfileLoaded).profile
+          : null;
+      try {
+        await _repo.updateFullName(event.fullName);
+        if (current != null) {
+          emit(ProfileLoaded(current.copyWith(fullName: event.fullName)));
+        } else {
+          add(const LoadProfile());
+        }
+      } catch (e) {
+        emit(ProfileError(e.toString()));
+        // Keep showing the existing profile after the error snackbar.
+        if (current != null) emit(ProfileLoaded(current));
       }
     });
 

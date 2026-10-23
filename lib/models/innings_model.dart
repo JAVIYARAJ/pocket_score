@@ -76,6 +76,15 @@ class Innings extends Equatable {
 
   double get runRate => legalBallsCount > 0 ? (totalRuns / legalBallsCount) * 6 : 0.0;
 
+  /// Wickets this side still has. Pocket Score plays last-man-standing, so a
+  /// side of N players can lose N wickets (not N-1). [fallbackSquadSize] covers
+  /// older saved innings that didn't store their batting players.
+  int wicketsInHand({int fallbackSquadSize = 0}) {
+    final squad = battingPlayers.isNotEmpty ? battingPlayers.length : fallbackSquadSize;
+    final left = squad - totalWickets;
+    return left < 0 ? 0 : left;
+  }
+
   /// Compute over-wise summary: [{overNum, runs, wickets, balls: [Ball]}]
   List<OverSummary> get overSummaries {
     final List<OverSummary> overs = [];
@@ -129,12 +138,15 @@ class Innings extends Equatable {
       if (ball.isLegalBall) s.ballsFaced++;
       if (ball.type == BallType.normal && ball.runs == 4) s.fours++;
       if (ball.type == BallType.normal && ball.runs == 6) s.sixes++;
-      
+
       if (ball.isWicket) {
-         s.isOut = true;
-         s.wicketType = ball.wicketType;
-         s.outBowlerId = ball.bowlerId;
-         s.outFielderId = ball.fielderId;
+        // A run out can dismiss the non-striker, not the batter on strike.
+        final outId = ball.dismissedId;
+        final out = stats.putIfAbsent(outId, () => BatsmanStats(outId));
+        out.isOut = true;
+        out.wicketType = ball.wicketType;
+        out.outBowlerId = ball.bowlerId;
+        out.outFielderId = ball.fielderId;
       }
     }
     return stats;
@@ -148,7 +160,7 @@ class Innings extends Equatable {
       final s = stats[ball.bowlerId]!;
       s.runsConceded += ball.totalRuns;
       if (ball.isLegalBall) s.ballsBowled++;
-      if (ball.isWicket) s.wickets++;
+      if (ball.isWicket && Dismissal.creditsBowler(ball.wicketType)) s.wickets++;
       if (ball.type == BallType.wide) s.wides++;
       if (ball.type == BallType.noBall) s.noBalls++;
       if (ball.isLegalBall && ball.runs == 0 && ball.extraRuns == 0) s.dotBalls++;

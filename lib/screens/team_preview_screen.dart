@@ -1,11 +1,10 @@
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
-import '../widgets/premium_header.dart';
+import '../widgets/setup_flow.dart';
 
 class TeamPreviewScreen extends StatelessWidget {
   final Team teamA;
@@ -19,110 +18,85 @@ class TeamPreviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Stack(
-          children: [
-            Column(
-              children: [
-                _buildHeader(context),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
-                    child: Column(
-                      children: [
-                        FadeInEntrance(
-                          delay: const Duration(milliseconds: 100),
-                          offset: const Offset(0, 20),
-                          child: _buildTeamCard(teamA, AppColors.info, true),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildVsDivider(),
-                        const SizedBox(height: 20),
-                        FadeInEntrance(
-                          delay: const Duration(milliseconds: 180),
-                          offset: const Offset(0, 20),
-                          child: _buildTeamCard(teamB, AppColors.accent, false),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // ── Sticky bottom button ────────────────────────────
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Container(
-                padding: EdgeInsets.fromLTRB(
-                  20, 16, 20, MediaQuery.of(context).padding.bottom + 20,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.bg,
-                  border: const Border(top: BorderSide(color: AppColors.border)),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () => context.push('/match/rules'),
-                    icon: const Icon(Icons.rule_rounded, size: 20),
-                    label: const Text('Confirm Lineups & Set Rules', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return PremiumHeader(
-      category: 'STEP 2 OF 4',
-      title: 'Lineup Preview',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+    return SetupScaffold(
+      step: SetupStep.lineups,
+      title: 'Line-ups',
+      subtitle: const Text('Check both sides before setting the rules'),
+      headerBottom: _matchupStrip(),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
         children: [
-          _countBadge(teamA.players.length, AppColors.info),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6),
-            child: Text('vs', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w600)),
+          FadeInEntrance(
+            delay: const Duration(milliseconds: 80),
+            offset: const Offset(0, 20),
+            child: _buildTeamCard(teamA, TeamColors.a, true),
           ),
-          _countBadge(teamB.players.length, AppColors.accentLight),
+          const SizedBox(height: 18),
+          _buildVsDivider(),
+          const SizedBox(height: 18),
+          FadeInEntrance(
+            delay: const Duration(milliseconds: 160),
+            offset: const Offset(0, 20),
+            child: _buildTeamCard(teamB, TeamColors.b, false),
+          ),
         ],
       ),
+      bottomBar: SetupCta(
+        label: 'Set the Rules',
+        icon: Icons.rule_rounded,
+        onTap: () => context.push('/match/rules'),
+      ),
     );
   }
 
-  Widget _countBadge(int count, Color color) {
+  // Crest · name · count  vs  count · name · crest
+  Widget _matchupStrip() {
+    Widget side(Team t, Color c, bool left) {
+      final parts = [
+        TeamCrest(name: t.name, color: c, size: 34),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: left ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            children: [
+              Text(t.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+              Text('${t.players.length} players',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ];
+      return Expanded(
+        child: Row(
+          mainAxisAlignment: left ? MainAxisAlignment.start : MainAxisAlignment.end,
+          children: left ? parts : parts.reversed.toList(),
+        ),
+      );
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
-      child: Text(
-        '$count',
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+      child: Row(
+        children: [
+          side(teamA, TeamColors.a, true),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('VS',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.accentLight.withValues(alpha: 0.9))),
+          ),
+          side(teamB, TeamColors.b, false),
+        ],
       ),
     );
   }
@@ -152,7 +126,8 @@ class TeamPreviewScreen extends StatelessWidget {
 
   Widget _buildTeamCard(Team team, Color teamColor, bool isTeamA) {
     return Container(
-      decoration: AppDecorations.card(),
+      clipBehavior: Clip.antiAlias,
+      decoration: AppDecorations.card(radius: 22),
       child: Column(
         children: [
           // Team header
@@ -160,22 +135,10 @@ class TeamPreviewScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: teamColor.withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: teamColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    team.name[0].toUpperCase(),
-                    style: TextStyle(color: teamColor, fontWeight: FontWeight.w900, fontSize: 18),
-                  ),
-                ),
+                TeamCrest(name: team.name, color: teamColor, size: 44),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -186,16 +149,19 @@ class TeamPreviewScreen extends StatelessWidget {
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                       ),
                       Text(
-                        '${team.players.length} players',
-                        style: TextStyle(fontSize: 12, color: teamColor, fontWeight: FontWeight.w600),
+                        '${team.players.length} players  ·  Captain ${team.players.where((p) => p.id == team.captainId).firstOrNull?.name ?? '—'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: teamColor, fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(7),
-                  decoration: BoxDecoration(color: teamColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                  child: Icon(Icons.shield_rounded, color: teamColor, size: 18),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(color: teamColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+                  child: Text(isTeamA ? 'TEAM A' : 'TEAM B',
+                      style: TextStyle(fontSize: 10, letterSpacing: 1, fontWeight: FontWeight.w800, color: teamColor)),
                 ),
               ],
             ),
