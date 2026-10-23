@@ -12,6 +12,7 @@ import '../models/player_model.dart';
 import '../models/match_models.dart';
 import '../theme/app_theme.dart';
 import '../theme/animations.dart';
+import '../widgets/live_widgets.dart';
 import '../widgets/setup_flow.dart' show CricketBallPainter;
 
 part 'scoring/scoreboard.dart';
@@ -470,38 +471,33 @@ class _ScoringViewState extends State<_ScoringView> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,  // dark icons on white surface bar
-        statusBarBrightness: Brightness.light,
+        statusBarIconBrightness: Brightness.light, // light icons on the dark header
+        statusBarBrightness: Brightness.dark,
       ),
       child: Scaffold(
       backgroundColor: AppColors.bg,
+      // No text input on this view (sheets handle their own insets); letting
+      // the keyboard shrink it would squeeze the header and pad.
+      resizeToAvoidBottomInset: false,
       body: Stack(children: [
         Column(children: [
-          // ── App Bar ──────────────────────────────────────────
-          _ScoringAppBar(state: state),
+          // Everything above the pad scrolls, so a tall bottom panel (e.g. the
+          // bowler picker) never pushes the layout past a short screen.
           Expanded(
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // Scoreboard
-                SliverToBoxAdapter(
-                    child: FadeInEntrance(
-                        delay: const Duration(milliseconds: 50),
-                        child: _Scoreboard(state: state))),
+                // Score header
+                SliverToBoxAdapter(child: _ScoreHero(state: state)),
                 // Players
                 SliverToBoxAdapter(
                     child: FadeInEntrance(
-                        delay: const Duration(milliseconds: 120),
+                        delay: const Duration(milliseconds: 80),
                         child: _PlayerStatus(state: state))),
-                // This Over
-                SliverToBoxAdapter(
-                    child: FadeInEntrance(
-                        delay: const Duration(milliseconds: 180),
-                        child: _ThisOver(state: state))),
                 // Over History
                 SliverToBoxAdapter(
                     child: FadeInEntrance(
-                        delay: const Duration(milliseconds: 220),
+                        delay: const Duration(milliseconds: 160),
                         child: _OverHistory(state: state))),
                 const SliverToBoxAdapter(child: SizedBox(height: 20)),
               ],

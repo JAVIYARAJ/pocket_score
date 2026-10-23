@@ -7,7 +7,10 @@ import '../services/match_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/shimmer.dart';
 import '../theme/animations.dart';
-import '../widgets/premium_header.dart';
+import '../models/ball_model.dart';
+import '../models/innings_model.dart';
+import '../models/player_model.dart';
+import '../widgets/live_widgets.dart';
 import '../utils/stats_utils.dart' show parsedScore;
 
 class _CelebrationData {
@@ -106,19 +109,16 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
   void _checkCelebration(Map<String, dynamic>? oldData, Map<String, dynamic>? newData) {
     if (oldData == null || newData == null || _loading) return;
     try {
-      final oldScore = ScoreState.fromJson(oldData);
-      final newScore = ScoreState.fromJson(newData);
-      final oldBalls = oldScore.currentInnings?.balls ?? [];
-      final newBalls = newScore.currentInnings?.balls ?? [];
-      if (newBalls.length > oldBalls.length) {
-        final b = newBalls.last;
-        if (b.isWicket == true) {
-          _celebration.value = _CelebrationData(text: 'OUT! 🎯', color: AppColors.wicket);
-        } else if ((b.runs as int?) == 6) {
-          _celebration.value = _CelebrationData(text: 'SIX! 🚀', color: AppColors.six);
-        } else if ((b.runs as int?) == 4) {
-          _celebration.value = _CelebrationData(text: 'FOUR! 💥', color: AppColors.four);
-        }
+      final oldBalls = parsedScore(oldData).currentInnings?.balls ?? const <Ball>[];
+      final newBalls = parsedScore(newData).currentInnings?.balls ?? const <Ball>[];
+      if (newBalls.length <= oldBalls.length) return;
+      final b = newBalls.last;
+      if (b.isWicket) {
+        _celebration.value = _CelebrationData(text: 'OUT! 🎯', color: AppColors.wicket);
+      } else if (b.runs == 6) {
+        _celebration.value = _CelebrationData(text: 'SIX! 🚀', color: AppColors.six);
+      } else if (b.runs == 4) {
+        _celebration.value = _CelebrationData(text: 'FOUR! 💥', color: AppColors.four);
       }
     } catch (_) {
       // Celebrations are decorative; a bad snapshot just skips one.
@@ -149,19 +149,20 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
 
   @override
   Widget build(BuildContext context) {
-    Widget body;
+    ScoreState? score;
+    Widget? fallback;
     if (_loading) {
-      body = const _LoadingView();
+      fallback = const _LoadingView();
     } else if (_error != null) {
-      body = _ErrorView(message: _error!);
+      fallback = _ErrorView(message: _error!);
     } else if (_ended || _scoreData == null) {
-      body = const _EndedView();
+      fallback = const _EndedView();
     } else {
       try {
-        final score = parsedScore(_scoreData!);
-        body = _LiveBody(score: score, totalOvers: widget.totalOvers, powerPlayOvers: widget.powerPlayOvers);
+        score = parsedScore(_scoreData!);
+        if (score.currentInnings == null) fallback = const _LoadingView();
       } catch (_) {
-        body = const _ErrorView(message: 'Could not parse score data.');
+        fallback = const _ErrorView(message: 'Could not parse score data.');
       }
     }
 
@@ -175,12 +176,19 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
         backgroundColor: AppColors.bg,
         body: Stack(
           children: [
-            Column(
-              children: [
-                _buildHeader(context),
-                Expanded(child: body),
-              ],
-            ),
+            if (fallback == null)
+              _LiveBody(
+                score: score!,
+                teamAName: widget.teamAName,
+                teamBName: widget.teamBName,
+                totalOvers: widget.totalOvers,
+                powerPlayOvers: widget.powerPlayOvers,
+              )
+            else
+              Column(children: [
+                _PlainHeader(title: '${widget.teamAName}  vs  ${widget.teamBName}'),
+                Expanded(child: fallback),
+              ]),
             ValueListenableBuilder<_CelebrationData?>(
               valueListenable: _celebration,
               builder: (context, data, _) {
@@ -197,763 +205,683 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
       ),
     );
   }
+}
 
-  Widget _buildHeader(BuildContext context) {
-    return PremiumHeader(
-      title: '${widget.teamAName}  vs  ${widget.teamBName}',
-      titleWidget: Text(
-        '${widget.teamAName}  vs  ${widget.teamBName}',
-        style: const TextStyle(
-          fontSize: 20, fontWeight: FontWeight.w800,
-          color: Colors.white, letterSpacing: -0.3,
+// ─────────────────────────────────────────────────────────────────────────────
+// Header used while loading / ended / on error.
+// ─────────────────────────────────────────────────────────────────────────────
+class _PlainHeader extends StatelessWidget {
+  final String title;
+  const _PlainHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 8, 16, 16),
+      decoration: const BoxDecoration(
+        gradient: AppColors.headerGradient,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+      ),
+      child: Row(children: [
+        const _GlassBack(),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
         ),
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitleWidget: Row(
-        children: [
-          PulseAnimation(
-            child: Container(
-              width: 7, height: 7,
-              decoration: const BoxDecoration(
-                color: Color(0xFF4ADE80),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          const Text(
-            'LIVE SPECTATOR',
-            style: TextStyle(
-              fontSize: 10, fontWeight: FontWeight.w800,
-              color: Color(0xFF4ADE80), letterSpacing: 1.5,
-            ),
-          ),
-        ],
-      ),
-      trailing: Container(
-        padding: const EdgeInsets.all(10),
+      ]),
+    );
+  }
+}
+
+class _GlassBack extends StatelessWidget {
+  const _GlassBack();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.canPop() ? context.pop() : null,
+      child: Container(
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
           shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         ),
-        child: const Icon(Icons.wifi_rounded, color: Colors.white, size: 20),
+        child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16, color: Colors.white),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Live Body — Cricbuzz-style full scorecard
+// Live Body — broadcast-style hero, then this over, batting, bowling and the
+// recent-overs timeline. Cards stagger in on open; after that only the parts
+// that change animate.
 // ─────────────────────────────────────────────────────────────────────────────
 class _LiveBody extends StatelessWidget {
   final ScoreState score;
-  final int        totalOvers;
-  final int?       powerPlayOvers;
-  const _LiveBody({required this.score, this.totalOvers = 0, this.powerPlayOvers});
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  String _name(List<dynamic> players, String? id) {
-    if (id == null || id.isEmpty) return '—';
-    try {
-      final p = players.firstWhere((p) => p.id == id);
-      return p.name as String;
-    } catch (_) {
-      return '—';
-    }
-  }
-
-  String _fmt(double v, [int dp = 2]) => v.toStringAsFixed(dp);
-
-  // Balls belonging to the current (incomplete) over
-  List<dynamic> _thisOverBalls(dynamic innings) {
-    final summaries = innings.overSummaries as List;
-    if (summaries.isEmpty) return const [];
-    return (summaries.last.balls as List);
-  }
-
-  // Partnership since last wicket
-  ({int runs, int balls}) _partnership(dynamic innings) {
-    int runs = 0, balls = 0;
-    for (final b in (innings.balls as List).reversed) {
-      if (b.isWicket == true) break;
-      runs  += b.totalRuns as int;
-      balls += (b.isLegalBall == true) ? 1 : 0;
-    }
-    return (runs: runs, balls: balls);
-  }
-
-  // Last dismissed batsman — name, runs, balls faced
-  ({String name, int runs, int balls})? _lastWicket(dynamic innings) {
-    final allBalls = innings.balls as List;
-    for (final b in allBalls.reversed) {
-      if (b.isWicket != true) continue;
-      final pid   = (b.outPlayerId ?? b.strikerId) as String;
-      final stats = (innings.batsmanStats as Map)[pid];
-      final name  = _name(innings.battingPlayers as List, pid);
-      if (name == '—' || stats == null) return null;
-      return (
-        name: name,
-        runs: (stats.runs  as int?) ?? 0,
-        balls: (stats.ballsFaced as int?) ?? 0,
-      );
-    }
-    return null;
-  }
+  final String teamAName;
+  final String teamBName;
+  final int totalOvers;
+  final int? powerPlayOvers;
+  const _LiveBody({
+    required this.score,
+    required this.teamAName,
+    required this.teamBName,
+    this.totalOvers = 0,
+    this.powerPlayOvers,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final innings = score.currentInnings;
-    if (innings == null) return const _LoadingView();
+    final inn = score.currentInnings!;
+    final summaries = inn.overSummaries;
+    final thisOver = summaries.isEmpty ? const <Ball>[] : summaries.last.balls;
+    // Earlier overs, newest first; the latest over is already shown above.
+    final pastOvers = summaries.isEmpty
+        ? const <OverSummary>[]
+        : summaries.sublist(0, summaries.length - 1).reversed.take(6).toList();
 
-    final batStats  = innings.batsmanStats;
-    final bowlStats = innings.bowlerStatsMap;
-    final striker   = batStats[score.strikerId];
-    final nonStrike = batStats[score.nonStrikerId];
-    final bowler    = bowlStats[score.bowlerId];
+    Widget stagger(int i, Widget child) => FadeInEntrance(
+          delay: Duration(milliseconds: 120 + 70 * i),
+          offset: const Offset(0, 16),
+          child: child,
+        );
 
-    final batPlayers  = innings.battingPlayers;
-    final bowlPlayers = innings.bowlingPlayers;
-
-    final isSuperOver    = score.isSuperOver;
-    final isChasing      = innings.target > 0;
-    final runsNeeded     = innings.target - innings.totalRuns;
-    final legalBalls     = innings.legalBallsCount;
-    // Super over is always 1 over (6 balls); regular match uses totalOvers setting
-    final effectiveOvers = isSuperOver ? 1 : totalOvers;
-    final inPowerPlay    = !isSuperOver && powerPlayOvers != null &&
-        innings.legalBallsCount ~/ 6 < powerPlayOvers!;
-    final ballsRemaining = (effectiveOvers * 6) - legalBalls;
-    final rrr = (isChasing && ballsRemaining > 0)
-        ? (runsNeeded / ballsRemaining) * 6
-        : 0.0;
-
-    final partnership = _partnership(innings);
-    final lastWkt     = _lastWicket(innings);
-    final thisOver    = _thisOverBalls(innings);
-    final recent      = (innings.balls as List).length > 12
-        ? (innings.balls as List).sublist((innings.balls as List).length - 12)
-        : (innings.balls as List);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-
-          // ── 1. SCORE CARD ──────────────────────────────────────────────────
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: isSuperOver
-                  ? const LinearGradient(
-                      colors: [Color(0xFF92400E), Color(0xFFB45309), Color(0xFFD97706)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight)
-                  : AppColors.scoreGradient,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: (isSuperOver ? AppColors.accent : AppColors.primary).withValues(alpha: 0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Innings label + optional Power Play badge
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isSuperOver) ...[
-                            const Icon(Icons.bolt_rounded, size: 10, color: Colors.white),
-                            const SizedBox(width: 4),
-                          ],
-                          Text(
-                            isSuperOver
-                                ? 'SUPER OVER'
-                                : (score.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS'),
-                            style: const TextStyle(
-                                fontSize: 9, fontWeight: FontWeight.w800,
-                                color: Colors.white70, letterSpacing: 1.5),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (inPowerPlay) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.security_rounded, size: 10, color: Colors.white),
-                            SizedBox(width: 4),
-                            Text('POWER PLAY',
-                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800,
-                                    color: Colors.white, letterSpacing: 1.5)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  innings.battingTeamName.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                // Main score
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '${innings.totalRuns}',
-                        style: const TextStyle(
-                            fontSize: 64,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1),
-                      ),
-                      TextSpan(
-                        text: '/${innings.totalWickets}',
-                        style: TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(alpha: 0.7),
-                            height: 1),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${innings.overDisplay} overs',
-                  style: const TextStyle(
-                      fontSize: 15,
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600),
-                ),
-
-                // Chase info
-                if (isChasing) ...[
-                  const SizedBox(height: 14),
-                  const Divider(color: Colors.white12, height: 1),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _scorePill('TARGET', '${innings.target}',
-                          Colors.orange),
-                      _scorePill(
-                          'NEED',
-                          '$runsNeeded runs${ballsRemaining > 0 ? '\n${ballsRemaining}b' : ''}',
-                          AppColors.danger),
-                      _scorePill('RRR',
-                          rrr > 0 ? _fmt(rrr) : '—', Colors.cyanAccent),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // CRR row (always shown)
-          Row(children: [
-            Expanded(
-              child: _InfoTile(
-                label : 'CRR',
-                value : _fmt(innings.runRate),
-                color : AppColors.primary,
-                icon  : Icons.speed_rounded,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _InfoTile(
-                label : 'WICKETS',
-                value : '${innings.totalWickets}/${isSuperOver ? 2 : 10}',
-                color : AppColors.danger,
-                icon  : Icons.sports_baseball_rounded,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _InfoTile(
-                label : 'EXTRAS',
-                value : '${innings.balls.fold<int>(0, (s, b) => s + (b.extraRuns as int? ?? 0))}',
-                color : AppColors.textMuted,
-                icon  : Icons.add_circle_outline_rounded,
-              ),
-            ),
-          ]),
-
-          const SizedBox(height: 16),
-
-          // ── 2. BATSMEN ────────────────────────────────────────────────────
-          _sectionLabel('BATTING'),
-          const SizedBox(height: 8),
-          Container(
-            decoration: AppDecorations.card(),
-            child: Column(
-              children: [
-                // Header row
-                _batsmanHeader(),
-                const Divider(height: 1, color: AppColors.border),
-                // Striker
-                if (score.strikerId.isNotEmpty)
-                  _batsmanRow(
-                    name    : _name(batPlayers, score.strikerId),
-                    stats   : striker,
-                    isStriker: true,
-                  ),
-                if (score.nonStrikerId.isNotEmpty) ...[
-                  const Divider(height: 1, color: AppColors.border),
-                  _batsmanRow(
-                    name    : _name(batPlayers, score.nonStrikerId),
-                    stats   : nonStrike,
-                    isStriker: false,
-                  ),
-                ],
-                // Partnership + Last Wicket footer
-                if (partnership.balls > 0 || lastWkt != null) ...[
-                  const Divider(height: 1, color: AppColors.border),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 9),
-                    child: Row(
-                      children: [
-                        if (partnership.balls > 0) ...[
-                          const Icon(Icons.handshake_rounded,
-                              size: 12, color: AppColors.primary),
-                          const SizedBox(width: 5),
-                          Text(
-                            "P'ship : ${partnership.runs}(${partnership.balls})",
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                        if (partnership.balls > 0 && lastWkt != null)
-                          Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 10),
-                            width: 1,
-                            height: 14,
-                            color: AppColors.border,
-                          ),
-                        if (lastWkt != null) ...[
-                          const Icon(Icons.sports_cricket_rounded,
-                              size: 12, color: AppColors.danger),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              'Last: ${lastWkt.name} ${lastWkt.runs}(${lastWkt.balls})',
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.danger,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // ── 3. CURRENT BOWLER ─────────────────────────────────────────────
-          _sectionLabel('BOWLING'),
-          const SizedBox(height: 8),
-          Container(
-            decoration: AppDecorations.card(),
-            child: Column(
-              children: [
-                _bowlerHeader(),
-                if (score.pendingBowlerChange) ...[
-                  const Divider(height: 1, color: AppColors.border),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Row(children: [
-                      PulseAnimation(
-                        child: Container(
-                          width: 8, height: 8,
-                          decoration: const BoxDecoration(
-                              color: AppColors.warning, shape: BoxShape.circle),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Awaiting bowler selection…',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.warning),
-                      ),
-                    ]),
-                  ),
-                ] else if (score.bowlerId.isNotEmpty && bowler != null) ...[
-                  const Divider(height: 1, color: AppColors.border),
-                  _bowlerRow(
-                    name  : _name(bowlPlayers, score.bowlerId),
-                    stats : bowler,
-                  ),
-                ] else ...[
-                  const Divider(height: 1, color: AppColors.border),
-                  const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: Text('—',
-                        style: TextStyle(color: AppColors.textMuted)),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // ── 4. THIS OVER ──────────────────────────────────────────────────
-          if (thisOver.isNotEmpty) ...[
-            _sectionLabel('THIS OVER'),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: AppDecorations.card(),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: thisOver
-                      .map((b) => _BallChip(ball: b))
-                      .toList(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // ── 5. RECENT BALLS (last 12) ─────────────────────────────────────
-          if (recent.length > (thisOver.isEmpty ? 0 : thisOver.length)) ...[
-            _sectionLabel('RECENT'),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: AppDecorations.card(),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: recent
-                      .map((b) => _BallChip(ball: b))
-                      .toList(),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ── Sub-builders ──────────────────────────────────────────────────────────
-
-  Widget _scorePill(String label, String value, Color color) {
-    return Column(children: [
-      Text(label,
-          style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: color.withValues(alpha: 0.7),
-              letterSpacing: 1)),
-      const SizedBox(height: 2),
-      Text(value,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: color,
-              height: 1.2)),
-    ]);
-  }
-
-  Widget _sectionLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: AppColors.textMuted,
-          letterSpacing: 1.5,
+    return ListView(
+      padding: EdgeInsets.zero,
+      physics: const BouncingScrollPhysics(),
+      children: [
+        _LiveHero(
+          score: score,
+          teamAName: teamAName,
+          teamBName: teamBName,
+          totalOvers: totalOvers,
+          powerPlayOvers: powerPlayOvers,
         ),
-      );
-
-  Widget _batsmanHeader() => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(children: [
-          Expanded(
-              child: Text('Batsman',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted))),
-          _ColHead('R'),
-          _ColHead('B'),
-          _ColHead('4s'),
-          _ColHead('6s'),
-          _ColHead('SR'),
-        ]),
-      );
-
-  Widget _batsmanRow({
-    required String name,
-    required dynamic stats,
-    required bool isStriker,
-  }) {
-    final r  = (stats?.runs   as int?)?.toString()  ?? '0';
-    final b  = (stats?.ballsFaced as int?)?.toString() ?? '0';
-    final f  = (stats?.fours  as int?)?.toString()  ?? '0';
-    final s  = (stats?.sixes  as int?)?.toString()  ?? '0';
-    final sr = stats?.strikeRate != null
-        ? _fmt(stats!.strikeRate as double, 1)
-        : '0.0';
-
-    return Container(
-      color: isStriker
-          ? AppColors.primary.withValues(alpha: 0.05)
-          : Colors.transparent,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(children: [
-        Expanded(
-          child: Row(children: [
-            Flexible(
-              child: Text(
-                name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight:
-                        isStriker ? FontWeight.w800 : FontWeight.w600,
-                    color: isStriker
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary),
-              ),
-            ),
-            if (isStriker) ...[
-              const SizedBox(width: 4),
-              const Text('*',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.primary)),
+        Padding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, MediaQuery.of(context).padding.bottom + 32),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            stagger(0, _ThisOverCard(score: score, balls: thisOver)),
+            const SizedBox(height: 12),
+            stagger(1, _BattingCard(score: score)),
+            const SizedBox(height: 12),
+            stagger(2, _BowlingCard(score: score)),
+            if (pastOvers.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              stagger(3, _OversTimeline(overs: pastOvers)),
             ],
           ]),
         ),
-        _ColVal(r,  isStriker),
-        _ColVal(b,  false),
-        _ColVal(f,  false),
-        _ColVal(s,  false),
-        _ColVal(sr, false),
-      ]),
-    );
-  }
-
-  Widget _bowlerHeader() => const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(children: [
-          Expanded(
-              child: Text('Bowler',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMuted))),
-          _ColHead('O'),
-          _ColHead('R'),
-          _ColHead('W'),
-          _ColHead('Eco'),
-        ]),
-      );
-
-  Widget _bowlerRow({required String name, required dynamic stats}) {
-    final o   = stats?.oversBowled ?? '0.0';
-    final r   = (stats?.runsConceded as int?)?.toString() ?? '0';
-    final w   = (stats?.wickets as int?)?.toString() ?? '0';
-    final eco = stats?.economy != null
-        ? _fmt(stats!.economy as double)
-        : '0.00';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(children: [
-        Expanded(
-          child: Text(name,
-              style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
-        ),
-        _ColVal('$o',  false),
-        _ColVal(r,     false),
-        _ColVal(w,     true, color: AppColors.danger),
-        _ColVal(eco,   false),
-      ]),
+      ],
     );
   }
 }
 
-// ── Column header ─────────────────────────────────────────────
-class _ColHead extends StatelessWidget {
-  final String text;
-  const _ColHead(this.text);
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 36,
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textMuted)),
-      );
-}
-
-// ── Column value ─────────────────────────────────────────────
-class _ColVal extends StatelessWidget {
-  final String text;
-  final bool   bold;
-  final Color? color;
-  const _ColVal(this.text, this.bold, {this.color});
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 36,
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight:
-                    bold ? FontWeight.w800 : FontWeight.w600,
-                color: color ??
-                    (bold
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary))),
-      );
-}
-
-// ── Info tile (CRR / Wickets / Extras row) ───────────────────
-class _InfoTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color  color;
-  final IconData icon;
-  const _InfoTile({required this.label, required this.value,
-      required this.color, required this.icon});
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.15)),
-        ),
-        child: Column(children: [
-          Icon(icon, size: 14, color: color.withValues(alpha: 0.7)),
-          const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: color)),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w700,
-                  color: color.withValues(alpha: 0.6),
-                  letterSpacing: 0.8)),
-        ]),
-      );
-}
-
-// ── Ball chip ─────────────────────────────────────────────────
-class _BallChip extends StatelessWidget {
-  final dynamic ball;
-  const _BallChip({required this.ball});
+// ── Hero ──────────────────────────────────────────────────────────────────────
+class _LiveHero extends StatelessWidget {
+  final ScoreState score;
+  final String teamAName;
+  final String teamBName;
+  final int totalOvers;
+  final int? powerPlayOvers;
+  const _LiveHero({
+    required this.score,
+    required this.teamAName,
+    required this.teamBName,
+    required this.totalOvers,
+    required this.powerPlayOvers,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isWicket = (ball.isWicket as bool?) ?? false;
-    final runs     = (ball.runs     as int?)  ?? 0;
-    final typeStr  = (ball.type?.toString() ?? '').toLowerCase();
-    final isWide   = typeStr.contains('wide');
-    final isNoBall = typeStr.contains('noball') ||
-                     typeStr.contains('no_ball');
-    final extraR   = (ball.extraRuns as int?) ?? 0;
+    final inn = score.currentInnings!;
+    final batting = inn.battingTeamName;
+    final bowling = batting == teamAName ? teamBName : teamAName;
+    final isSuperOver = score.isSuperOver;
+    final overs = isSuperOver ? 1 : totalOvers;
+    final ballsLeft = (overs * 6 - inn.legalBallsCount).clamp(0, 9999);
+    final isChasing = inn.target > 0;
+    final need = inn.target - inn.totalRuns;
+    final rrr = isChasing && ballsLeft > 0 ? need / ballsLeft * 6 : 0.0;
+    final inPowerPlay =
+        !isSuperOver && powerPlayOvers != null && inn.legalBallsCount ~/ 6 < powerPlayOvers!;
+    final extras = inn.balls.fold<int>(0, (s, b) => s + b.extraRuns);
+    final lastBall = inn.balls.isEmpty ? null : inn.balls.last;
 
-    Color  bg; Color fg; String label;
-    if (isWicket) {
-      bg = AppColors.danger;  fg = Colors.white;
-      label = extraR > 0 ? '$extraR+W' : 'W';
-    } else if (runs == 6) {
-      bg = AppColors.success; fg = Colors.white; label = '6';
-    } else if (runs == 4) {
-      bg = AppColors.info;    fg = Colors.white; label = '4';
-    } else if (isWide) {
-      bg = AppColors.warning.withValues(alpha: 0.15);
-      fg = AppColors.warning;
-      label = extraR > 0 ? 'Wd+$extraR' : 'Wd';
-    } else if (isNoBall) {
-      bg = AppColors.accent.withValues(alpha: 0.15);
-      fg = AppColors.accent;
-      label = runs > 0 ? 'Nb+$runs' : 'Nb';
-    } else if (runs == 0) {
-      bg = AppColors.bg;
-      fg = AppColors.textMuted;
-      label = '·';
-    } else {
-      bg = AppColors.surfaceLight;
-      fg = AppColors.textSecondary;
-      label = '$runs';
-    }
+    final stage = isSuperOver ? 'SUPER OVER' : (score.isFirstInnings ? '1ST INNINGS' : '2ND INNINGS');
 
-    final size = label.length > 2 ? 44.0 : 38.0;
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      width: size, height: 38,
-      decoration: BoxDecoration(
-        color : bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: fg.withValues(alpha: 0.25)),
+    return EventGlow(
+      eventKey: inn.balls.length,
+      color: highlightFor(lastBall),
+      radius: 28,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(12, MediaQuery.of(context).padding.top + 8, 16, 18),
+        decoration: BoxDecoration(
+          gradient: isSuperOver
+              ? const LinearGradient(
+                  colors: [Color(0xFF78350F), Color(0xFFB45309), Color(0xFFD97706)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight)
+              : AppColors.headerGradient,
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+        ),
+        child: Stack(children: [
+          Positioned(
+            right: -30,
+            top: 30,
+            child: Icon(Icons.sports_cricket_rounded, size: 170, color: Colors.white.withValues(alpha: 0.04)),
+          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // ── Top bar ──
+            Row(children: [
+              const _GlassBack(),
+              const Spacer(),
+              const LiveBadge(),
+              const SizedBox(width: 8),
+              Text('SPECTATING',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: Colors.white.withValues(alpha: 0.6))),
+            ]),
+            const SizedBox(height: 16),
+
+            // ── Teams ──
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Row(children: [
+                _crest(batting, true),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(batting,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white)),
+                    Text('vs $bowling',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.55))),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  _tag(stage, isSuperOver ? Icons.bolt_rounded : null),
+                  if (inPowerPlay) ...[
+                    const SizedBox(height: 4),
+                    _tag('POWER PLAY', Icons.flash_on_rounded, gold: true),
+                  ],
+                ]),
+              ]),
+            ),
+            const SizedBox(height: 18),
+
+            // ── Score ──
+            Center(child: RollingScore(runs: inn.totalRuns, wickets: inn.totalWickets, size: 58)),
+            const SizedBox(height: 6),
+            Center(
+              child: Text('${inn.overDisplay}${overs > 0 ? ' / $overs' : ''} overs',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.65))),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Chase ──
+            if (isChasing) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(children: [
+                  ChaseMeter(runs: inn.totalRuns, target: inn.target, height: 7),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Text(
+                      need <= 0 ? 'Target reached!' : 'Need $need off $ballsLeft',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.accentLight),
+                    ),
+                    const Spacer(),
+                    Text('Target ${inn.target}',
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.6))),
+                  ]),
+                ]),
+              ),
+              const SizedBox(height: 14),
+            ],
+
+            // ── Rates strip ──
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: Row(children: [
+                _rate('CRR', inn.runRate.toStringAsFixed(2)),
+                _divider(),
+                if (isChasing) ...[
+                  _rate('RRR', rrr > 0 ? rrr.toStringAsFixed(2) : '—', highlight: true),
+                  _divider(),
+                ],
+                _rate('EXTRAS', '$extras'),
+                _divider(),
+                _rate('WKTS LEFT', '${(isSuperOver ? 2 : _wicketsAvailable(inn)) - inn.totalWickets}'),
+              ]),
+            ),
+          ]),
+        ]),
       ),
-      alignment: Alignment.center,
-      child: Text(label,
-          style: TextStyle(
-              color: fg,
-              fontWeight: FontWeight.w900,
-              fontSize: label.length > 2 ? 10 : 13)),
+    );
+  }
+
+  /// Wickets the batting side can lose before the innings ends.
+  int _wicketsAvailable(Innings inn) {
+    final n = inn.battingPlayers.length;
+    if (n <= 1) return 1;
+    return score.isLastManStanding ? n : n - 1;
+  }
+
+  Widget _crest(String name, bool batting) => Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: AppColors.goldGradient,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: Text(name.isEmpty ? '?' : name.trim()[0].toUpperCase(),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+      );
+
+  Widget _tag(String text, IconData? icon, {bool gold = false}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: gold ? AppColors.accentLight.withValues(alpha: 0.18) : Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 10, color: gold ? AppColors.accentLight : Colors.white),
+            const SizedBox(width: 3),
+          ],
+          Text(text,
+              style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                  color: gold ? AppColors.accentLight : Colors.white.withValues(alpha: 0.85))),
+        ]),
+      );
+
+  Widget _rate(String label, String value, {bool highlight = false}) => Expanded(
+        child: Column(children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Text(value,
+                key: ValueKey(value),
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: highlight ? AppColors.accentLight : Colors.white)),
+          ),
+          const SizedBox(height: 2),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: Colors.white.withValues(alpha: 0.5))),
+        ]),
+      );
+
+  Widget _divider() => Container(width: 1, height: 26, color: Colors.white.withValues(alpha: 0.12));
+}
+
+// ── Shared card shell ─────────────────────────────────────────────────────────
+class _Panel extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget? trailing;
+  final Widget child;
+  const _Panel({required this.title, required this.icon, required this.child, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: AppDecorations.card(radius: 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 13, color: AppColors.primary),
+          ),
+          const SizedBox(width: 8),
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w900, letterSpacing: 1.3, color: AppColors.textMuted)),
+          const Spacer(),
+          if (trailing != null) trailing!,
+        ]),
+        const SizedBox(height: 12),
+        child,
+      ]),
+    );
+  }
+}
+
+String _nameOf(List<Player> players, String id) =>
+    players.where((p) => p.id == id).firstOrNull?.name ?? '—';
+
+/// Current bowler's name: from the innings, else the match line-up.
+String _bowlerName(ScoreState score) {
+  final n = _nameOf(score.currentInnings!.bowlingPlayers, score.bowlerId);
+  return n != '—' ? n : _nameOf(score.bowlingLineup, score.bowlerId);
+}
+
+// ── This over ─────────────────────────────────────────────────────────────────
+class _ThisOverCard extends StatelessWidget {
+  final ScoreState score;
+  final List<Ball> balls;
+  const _ThisOverCard({required this.score, required this.balls});
+
+  @override
+  Widget build(BuildContext context) {
+    final runs = balls.fold<int>(0, (s, b) => s + b.totalRuns);
+    final bowler = score.bowlerId.isEmpty ? null : _bowlerName(score);
+    return _Panel(
+      title: 'THIS OVER',
+      icon: Icons.sports_baseball_rounded,
+      trailing: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: Text('$runs run${runs == 1 ? '' : 's'}',
+            key: ValueKey(runs),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.primary)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        OverTrack(balls: balls, size: 36),
+        if (score.pendingBowlerChange || bowler != null) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            if (score.pendingBowlerChange) ...[
+              PulseAnimation(
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(color: AppColors.warning, shape: BoxShape.circle),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Over complete · new bowler coming on…',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.warning)),
+            ] else
+              Expanded(
+                child: Text('$bowler to bowl',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              ),
+          ]),
+        ],
+      ]),
+    );
+  }
+}
+
+// ── Batting ───────────────────────────────────────────────────────────────────
+class _BattingCard extends StatelessWidget {
+  final ScoreState score;
+  const _BattingCard({required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    final inn = score.currentInnings!;
+    final rows = <Widget>[
+      if (score.strikerId.isNotEmpty) _batterRow(inn, score.strikerId, true),
+      if (score.nonStrikerId.isNotEmpty) _batterRow(inn, score.nonStrikerId, false),
+    ];
+
+    // Partnership since the last wicket.
+    var pRuns = 0, pBalls = 0;
+    for (final b in inn.balls.reversed) {
+      if (b.isWicket) break;
+      pRuns += b.totalRuns;
+      if (b.isLegalBall) pBalls++;
+    }
+    final lastOut = inn.balls.lastWhere((b) => b.isWicket, orElse: () => _noBall);
+    final lastStats = identical(lastOut, _noBall) ? null : inn.batsmanStats[lastOut.dismissedId];
+
+    return _Panel(
+      title: 'BATTING',
+      icon: Icons.sports_cricket_rounded,
+      child: Column(children: [
+        if (rows.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: Text('Waiting for the next batter…',
+                style: TextStyle(fontSize: 12.5, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+          ),
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          rows[i],
+        ],
+        if (pBalls > 0 || lastStats != null) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            if (pBalls > 0)
+              _footChip(Icons.handshake_rounded, "Partnership $pRuns ($pBalls)", AppColors.primary),
+            if (lastStats != null)
+              _footChip(
+                  Icons.close_rounded,
+                  'Last out: ${_nameOf(inn.battingPlayers, lastOut.dismissedId)} '
+                  '${lastStats.runs} (${lastStats.ballsFaced})',
+                  AppColors.danger),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  Widget _batterRow(Innings inn, String id, bool onStrike) {
+    final s = inn.batsmanStats[id];
+    final runs = s?.runs ?? 0;
+    final balls = s?.ballsFaced ?? 0;
+    final sr = s?.strikeRate ?? 0;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: onStrike ? AppColors.surfaceGreen : AppColors.surfaceLight.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+            color: onStrike ? AppColors.primaryLight.withValues(alpha: 0.5) : Colors.transparent),
+      ),
+      child: Column(children: [
+        Row(children: [
+          Icon(onStrike ? Icons.sports_cricket_rounded : Icons.person_rounded,
+              size: 15, color: onStrike ? AppColors.primary : AppColors.textMuted),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(_nameOf(inn.battingPlayers, id),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: onStrike ? FontWeight.w800 : FontWeight.w600,
+                    color: AppColors.textPrimary)),
+          ),
+          TweenAnimationBuilder<int>(
+            tween: IntTween(end: runs),
+            duration: const Duration(milliseconds: 500),
+            builder: (_, v, __) => Text('$v',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+          ),
+          Text(' ($balls)',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          _mini('4s', '${s?.fours ?? 0}', AppColors.four),
+          const SizedBox(width: 10),
+          _mini('6s', '${s?.sixes ?? 0}', AppColors.six),
+          const SizedBox(width: 12),
+          // Strike-rate bar: full at 200.
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: Container(
+                height: 4,
+                color: AppColors.border,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: (sr / 200).clamp(0.0, 1.0)),
+                  duration: const Duration(milliseconds: 700),
+                  curve: Curves.easeOutCubic,
+                  builder: (_, v, __) => FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: v,
+                    child: Container(color: onStrike ? AppColors.primaryLight : AppColors.textMuted),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('SR ${sr.toStringAsFixed(1)}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _mini(String label, String value, Color c) => Text.rich(
+        TextSpan(children: [
+          TextSpan(text: value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: c)),
+          TextSpan(
+              text: ' $label',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+        ]),
+      );
+
+  Widget _footChip(IconData icon, String text, Color c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 12, color: c),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(text,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c)),
+          ),
+        ]),
+      );
+}
+
+/// Sentinel for "no wicket yet" in [Iterable.lastWhere].
+const _noBall = Ball(runs: 0, type: BallType.normal, strikerId: '', bowlerId: '');
+
+// ── Bowling ───────────────────────────────────────────────────────────────────
+class _BowlingCard extends StatelessWidget {
+  final ScoreState score;
+  const _BowlingCard({required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    final inn = score.currentInnings!;
+    // A bowler who has just come on has no stats yet — still show them.
+    final s = inn.bowlerStatsMap[score.bowlerId];
+    final hasBowler = score.bowlerId.isNotEmpty && !score.pendingBowlerChange;
+
+    return _Panel(
+      title: 'BOWLING',
+      icon: Icons.sports_handball_rounded,
+      child: !hasBowler
+          ? Row(children: [
+              PulseAnimation(
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(color: AppColors.warning, shape: BoxShape.circle),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text('Awaiting bowler selection…',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppColors.warning)),
+            ])
+          : Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_bowlerName(score),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const SizedBox(height: 3),
+                  Text('${s?.oversBowled ?? '0.0'} ov  ·  Econ ${(s?.economy ?? 0).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+                ]),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                  child: Text('${s?.wickets ?? 0}-${s?.runsConceded ?? 0}',
+                      key: ValueKey('${s?.wickets}-${s?.runsConceded}'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.danger)),
+                ),
+              ),
+            ]),
+    );
+  }
+}
+
+// ── Recent overs ──────────────────────────────────────────────────────────────
+class _OversTimeline extends StatelessWidget {
+  final List<OverSummary> overs;
+  const _OversTimeline({required this.overs});
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      title: 'RECENT OVERS',
+      icon: Icons.timeline_rounded,
+      child: Column(children: [
+        for (var i = 0; i < overs.length; i++) ...[
+          if (i > 0) const Divider(height: 14, color: AppColors.borderLight),
+          Row(children: [
+            SizedBox(
+              width: 40,
+              child: Text('Ov ${overs[i].overNumber}',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.textMuted)),
+            ),
+            Expanded(child: OverTrack(balls: overs[i].balls, size: 24)),
+            const SizedBox(width: 8),
+            Text('${overs[i].runs}',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+          ]),
+        ],
+      ]),
     );
   }
 }

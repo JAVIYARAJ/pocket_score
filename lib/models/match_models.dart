@@ -112,6 +112,10 @@ class MatchSummary extends Equatable {
   final int? maxOversPerBowler;
   final int? powerPlayOvers;
 
+  /// User who created the match — the only one the server lets score it.
+  /// Null for a match created on this device that hasn't synced yet.
+  final String? ownerId;
+
   const MatchSummary({
     required this.id,
     required this.teamAName,
@@ -133,7 +137,11 @@ class MatchSummary extends Equatable {
     this.tournamentId,
     this.maxOversPerBowler,
     this.powerPlayOvers,
+    this.ownerId,
   });
+
+  /// Whether [userId] may score, resume or delete this match.
+  bool isOwnedBy(String? userId) => ownerId == null || ownerId == userId;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -156,6 +164,7 @@ class MatchSummary extends Equatable {
     'tournamentId': tournamentId,
     'maxOversPerBowler': maxOversPerBowler,
     'powerPlayOvers': powerPlayOvers,
+    'ownerId': ownerId,
   };
 
   factory MatchSummary.fromJson(Map<String, dynamic> json) => MatchSummary(
@@ -179,6 +188,7 @@ class MatchSummary extends Equatable {
     tournamentId: json['tournamentId'],
     maxOversPerBowler: json['maxOversPerBowler'] as int?,
     powerPlayOvers: json['powerPlayOvers'] as int?,
+    ownerId: json['ownerId'] as String?,
   );
 
   MatchSummary copyWith({
@@ -219,10 +229,11 @@ class MatchSummary extends Equatable {
       tournamentId: tournamentId ?? this.tournamentId,
       maxOversPerBowler: maxOversPerBowler ?? this.maxOversPerBowler,
       powerPlayOvers: powerPlayOvers ?? this.powerPlayOvers,
+      ownerId: ownerId,
     );
   }
 
   @override
   List<Object?> get props => [id, teamAName, teamBName, teamA, teamB, totalOvers, status, result,
-    teamAScore, teamAWickets, teamAOvers, teamBScore, teamBWickets, teamBOvers, createdAt, scoreData, groupId, tournamentId, maxOversPerBowler, powerPlayOvers];
+    teamAScore, teamAWickets, teamAOvers, teamBScore, teamBWickets, teamBOvers, createdAt, scoreData, groupId, tournamentId, maxOversPerBowler, powerPlayOvers, ownerId];
 }

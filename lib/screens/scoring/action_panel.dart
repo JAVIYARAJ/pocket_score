@@ -16,66 +16,61 @@ class _ActionPanel extends StatelessWidget {
     if (state.pendingBowlerChange) return _BowlerPicker(state: state);
 
     return Container(
-      padding: EdgeInsets.fromLTRB(
-          16, 16, 16, MediaQuery.of(context).padding.bottom + 16),
+      padding: EdgeInsets.fromLTRB(14, 14, 14, MediaQuery.of(context).padding.bottom + 14),
       decoration: const BoxDecoration(
         color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-        boxShadow: [
-          BoxShadow(color: Color(0x0D000000), blurRadius: 16, offset: Offset(0, -4))
-        ],
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [BoxShadow(color: Color(0x14000000), blurRadius: 20, offset: Offset(0, -6))],
       ),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Run buttons
+        // Runs off the bat
         Row(children: [
-          _runBtn(context, '0', 0, bg: AppColors.surfaceLight, text: AppColors.textMuted),
-          _runBtn(context, '1', 1, bg: AppColors.surfaceLight, text: AppColors.textSecondary),
-          _runBtn(context, '2', 2, bg: AppColors.surfaceLight, text: AppColors.textSecondary),
-          _runBtn(context, '3', 3, bg: AppColors.surfaceLight, text: AppColors.textSecondary),
-          _runBtn(context, '4', 4,
-              bg: AppColors.four.withValues(alpha: 0.12),
-              text: AppColors.four),
-          _runBtn(context, '6', 6,
-              bg: AppColors.six.withValues(alpha: 0.12),
-              text: AppColors.six),
+          for (final r in const [0, 1, 2, 3]) _runKey(context, r),
+          _runKey(context, 4,
+              gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF3B82F6)]),
+              caption: 'FOUR'),
+          _runKey(context, 6,
+              gradient: const LinearGradient(colors: [Color(0xFF15803D), Color(0xFF22C55E)]),
+              caption: 'SIX'),
         ]),
-        const SizedBox(height: 10),
-        // Extras + Wicket
+        const SizedBox(height: 8),
+        // Extras + wicket
         Row(children: [
-          _extrasBtn(context, 'WD', 0, BallType.wide, AppColors.wide),
-          _noBallBtn(context),
-          const SizedBox(width: 8),
+          Expanded(
+            child: _PadKey(
+              onTap: () {
+                if (!_acceptsBalls(context)) return;
+                HapticFeedback.lightImpact();
+                context.read<ScoreBloc>().add(RecordBall(runs: 0, type: BallType.wide, extraRuns: 1));
+              },
+              color: AppColors.wide,
+              label: 'WD',
+              caption: 'WIDE +1',
+            ),
+          ),
+          Expanded(
+            child: _PadKey(
+              onTap: () {
+                if (!_acceptsBalls(context)) return;
+                HapticFeedback.lightImpact();
+                _noBallSheet(context);
+              },
+              color: AppColors.noBall,
+              label: 'NB',
+              caption: 'NO BALL',
+            ),
+          ),
           Expanded(
             flex: 2,
-            child: GestureDetector(
-              onTap: () => _wicketDialog(context, state),
-              child: Container(
-                height: 58,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                      colors: [Color(0xFFB91C1C), AppColors.wicket]),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.wicket.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4))
-                  ],
-                ),
-                child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.sports_baseball_rounded,
-                          color: Colors.white, size: 18),
-                      SizedBox(width: 8),
-                      Text('WICKET',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 1.2)),
-                    ]),
-              ),
+            child: _PadKey(
+              onTap: () {
+                HapticFeedback.heavyImpact();
+                _wicketDialog(context, state);
+              },
+              gradient: const LinearGradient(colors: [Color(0xFFB91C1C), Color(0xFFEF4444)]),
+              color: AppColors.wicket,
+              label: 'WICKET',
+              icon: Icons.sports_baseball_rounded,
             ),
           ),
         ]),
@@ -83,90 +78,18 @@ class _ActionPanel extends StatelessWidget {
     );
   }
 
-  Widget _runBtn(BuildContext context, String label, int runs,
-      {required Color bg, required Color text}) {
+  Widget _runKey(BuildContext context, int runs, {Gradient? gradient, String? caption}) {
     return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: GestureDetector(
-          onTap: () {
-            if (!_acceptsBalls(context)) return;
-            context
-                .read<ScoreBloc>()
-                .add(RecordBall(runs: runs, type: BallType.normal, extraRuns: 0));
-          },
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.border),
-            ),
-            alignment: Alignment.center,
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: text)),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _extrasBtn(BuildContext context, String label, int runs,
-      BallType type, Color color) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: GestureDetector(
-          onTap: () {
-            if (!_acceptsBalls(context)) return;
-            context.read<ScoreBloc>().add(
-                RecordBall(runs: runs, type: type, extraRuns: 1));
-          },
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
-            ),
-            alignment: Alignment.center,
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: color)),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _noBallBtn(BuildContext context) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: GestureDetector(
-          onTap: () {
-            if (_acceptsBalls(context)) _noBallSheet(context);
-          },
-          child: Container(
-            height: 58,
-            decoration: BoxDecoration(
-              color: AppColors.noBall.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.noBall.withValues(alpha: 0.3)),
-            ),
-            alignment: Alignment.center,
-            child: const Text('NB',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.noBall)),
-          ),
-        ),
+      child: _PadKey(
+        onTap: () {
+          if (!_acceptsBalls(context)) return;
+          gradient != null ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
+          context.read<ScoreBloc>().add(RecordBall(runs: runs, type: BallType.normal, extraRuns: 0));
+        },
+        gradient: gradient,
+        color: runs == 0 ? AppColors.textMuted : AppColors.textPrimary,
+        label: runs == 0 ? '•' : '$runs',
+        caption: caption ?? (runs == 0 ? 'DOT' : null),
       ),
     );
   }
@@ -264,6 +187,102 @@ class _ActionPanel extends StatelessWidget {
               }).toList(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One key on the scoring pad: sinks a little while pressed. [gradient] makes
+/// a filled key (boundaries, wicket); otherwise it is a light key tinted with
+/// [color].
+class _PadKey extends StatefulWidget {
+  final VoidCallback onTap;
+  final String label;
+  final Color color;
+  final Gradient? gradient;
+  final String? caption;
+  final IconData? icon;
+  const _PadKey({
+    required this.onTap,
+    required this.label,
+    required this.color,
+    this.gradient,
+    this.caption,
+    this.icon,
+  });
+
+  @override
+  State<_PadKey> createState() => _PadKeyState();
+}
+
+class _PadKeyState extends State<_PadKey> {
+  bool _down = false;
+
+  void _set(bool v) {
+    if (_down != v) setState(() => _down = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = widget.gradient != null;
+    // Light keys: neutral for plain runs, tinted for extras.
+    final neutral = widget.color == AppColors.textPrimary || widget.color == AppColors.textMuted;
+    final fg = filled ? Colors.white : widget.color;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: GestureDetector(
+        onTapDown: (_) => _set(true),
+        onTapUp: (_) => _set(false),
+        onTapCancel: () => _set(false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _down ? 0.92 : 1,
+          duration: const Duration(milliseconds: 90),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            height: 58,
+            decoration: BoxDecoration(
+              gradient: widget.gradient,
+              color: filled
+                  ? null
+                  : neutral
+                      ? (_down ? AppColors.border : AppColors.surfaceLight)
+                      : widget.color.withValues(alpha: _down ? 0.18 : 0.09),
+              borderRadius: BorderRadius.circular(16),
+              border: filled
+                  ? null
+                  : Border.all(color: neutral ? AppColors.border : widget.color.withValues(alpha: 0.3)),
+              boxShadow: filled && !_down
+                  ? [BoxShadow(color: widget.color.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4))]
+                  : null,
+            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (widget.icon != null) ...[
+                  Icon(widget.icon, size: 17, color: fg),
+                  const SizedBox(width: 7),
+                ],
+                Text(widget.label,
+                    style: TextStyle(
+                      fontSize: widget.label.length > 2 ? 15 : (widget.label == '•' ? 26 : 22),
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: widget.label.length > 2 ? 1.2 : 0,
+                      color: fg,
+                      height: 1.05,
+                    )),
+              ]),
+              if (widget.caption != null)
+                Text(widget.caption!,
+                    style: TextStyle(
+                        fontSize: 7.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.8,
+                        color: fg.withValues(alpha: filled ? 0.85 : 0.7))),
+            ]),
+          ),
         ),
       ),
     );

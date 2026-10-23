@@ -220,6 +220,7 @@ class MatchRepository {
     groupId           : r['group_id'] as String?,
     maxOversPerBowler : r['max_overs_per_bowler'] as int?,
     powerPlayOvers    : r['power_play_overs'] as int?,
+    ownerId           : r['user_id'] as String?,
   );
 
   Map<String, dynamic> _toJson(MatchSummary m) => {

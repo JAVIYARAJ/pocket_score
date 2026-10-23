@@ -421,7 +421,7 @@ class _LedOverBoard extends StatelessWidget {
   }
 
   Widget _bulb(Ball b) {
-    final (label, color) = _ballFace(b);
+    final (label, color) = ballFace(b);
     final isDot = color == AppColors.dot;
     final glow = isDot ? Colors.white.withValues(alpha: 0.25) : color;
     return Container(
