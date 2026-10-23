@@ -18,6 +18,7 @@ import '../bloc/group_cubit.dart'
         JoinGroupEvent;
 import '../models/group_model.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
@@ -87,9 +88,9 @@ class GroupsScreen extends StatelessWidget {
               child: BlocBuilder<GroupBloc, GroupState>(
                 builder: (context, state) {
                   if (state is GroupLoading || state is GroupInitial) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primary, strokeWidth: 2),
+                    return const SkeletonList(
+                      item: GroupCardSkeleton(),
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, 120),
                     );
                   }
                   if (state is GroupError) {

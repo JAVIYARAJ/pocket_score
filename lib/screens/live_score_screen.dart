@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../bloc/score_bloc.dart';
 import '../services/match_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
 
@@ -958,19 +959,7 @@ class _BallChip extends StatelessWidget {
 class _LoadingView extends StatelessWidget {
   const _LoadingView();
   @override
-  Widget build(BuildContext context) => const Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        CircularProgressIndicator(color: AppColors.primary, strokeWidth: 3),
-        SizedBox(height: 16),
-        Text(
-          'Connecting to live score…',
-          style: TextStyle(color: AppColors.textMuted, fontSize: 14),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) => const ScoreboardSkeleton();
 }
 
 class _EndedView extends StatelessWidget {

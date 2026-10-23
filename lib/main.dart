@@ -26,6 +26,8 @@ import 'models/player_model.dart';
 import 'services/match_repository.dart';
 import 'services/group_repository.dart';
 import 'services/profile_repository.dart';
+import 'services/onboarding_store.dart';
+import 'screens/onboarding_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/offline_gate.dart';
 import 'screens/splash_screen.dart';
@@ -52,6 +54,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await dotenv.load(fileName: '.env');
+  await OnboardingStore.load();
 
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -129,6 +132,9 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
         // Splash manages its own exit — never auto-redirect out of it.
         if (loc.startsWith('/splash')) return null;
 
+        // The intro is shown before sign-in, so signed-out users may stay.
+        if (loc == '/onboarding') return null;
+
         // Not signed in: send everything to auth.
         if (!isAuthed && loc != '/auth') return '/auth';
 
@@ -141,8 +147,26 @@ class _PocketScoreAppState extends State<PocketScoreApp> {
         // ── Splash ─────────────────────────────────────────────────────
         GoRoute(
           path: '/splash',
-          builder: (context, state) =>
-              SplashScreen(onComplete: () => context.go('/home')),
+          builder: (context, state) => SplashScreen(onComplete: () {
+            // First launch shows the intro once. Players already signed in
+            // (e.g. updating the app) skip it — it's for new users.
+            if (!OnboardingStore.seen && _authBloc.state is! AuthAuthenticated) {
+              context.go('/onboarding');
+            } else {
+              if (!OnboardingStore.seen) OnboardingStore.markSeen();
+              context.go('/home');
+            }
+          }),
+        ),
+
+        // ── Onboarding (first launch only) ─────────────────────────────
+        GoRoute(
+          path: '/onboarding',
+          builder: (context, state) => OnboardingScreen(onDone: () async {
+            await OnboardingStore.markSeen();
+            // Signed-out users are redirected on to sign-in.
+            if (context.mounted) context.go('/home');
+          }),
         ),
 
         // ── Auth ────────────────────────────────────────────────────────

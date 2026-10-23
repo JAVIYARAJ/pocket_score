@@ -9,6 +9,7 @@ import '../models/player_model.dart';
 import '../services/group_repository.dart';
 import '../services/guest_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/add_guest_sheet.dart';
 import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
@@ -279,9 +280,11 @@ class _TeamSelectionScreenState extends State<TeamSelectionScreen> {
         ],
       ),
       body: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primary, strokeWidth: 2))
+                  ? const SkeletonList(
+                      item: ListTileSkeleton(),
+                      count: 6,
+                      padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    )
                   : (_pool.isEmpty
                       ? _buildEmptyState()
                       : ListView(

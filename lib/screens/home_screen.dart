@@ -13,6 +13,7 @@ import '../models/match_models.dart';
 import '../models/player_model.dart';
 import '../services/match_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/player_card_sheet.dart';
 import '../utils/stats_utils.dart';
@@ -85,6 +86,16 @@ class HomeScreen extends StatelessWidget {
           // ── MATCH LIST ────────────────────────────────────────
           BlocBuilder<MatchListBloc, MatchListState>(
             builder: (context, state) {
+              if (!state.synced && state.matches.isEmpty) {
+                return SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  sliver: SliverList.separated(
+                    itemCount: 3,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (_, __) => const MatchCardSkeleton(),
+                  ),
+                );
+              }
               if (state.matches.isEmpty) {
                 return const SliverFillRemaining(
                   hasScrollBody: false,

@@ -20,6 +20,7 @@ import '../services/group_repository.dart';
 import '../services/guest_repository.dart';
 import '../bloc/score_bloc.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/add_guest_sheet.dart';
 import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
@@ -904,9 +905,11 @@ class _MatchesTabState extends State<_MatchesTab>
     super.build(context);
 
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(
-            color: AppColors.primary, strokeWidth: 2),
+      return const SkeletonList(
+        item: MatchCardSkeleton(),
+        count: 3,
+        padding: EdgeInsets.fromLTRB(16, 20, 16, 40),
+        gap: 12,
       );
     }
 
@@ -1180,9 +1183,10 @@ class _LeaderboardTabState extends State<_LeaderboardTab>
       future: _future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-                color: AppColors.primary, strokeWidth: 2),
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            physics: const NeverScrollableScrollPhysics(),
+            children: const [LeaderboardSkeleton()],
           );
         }
         if (snap.hasError) {
@@ -1465,10 +1469,7 @@ class _MembersTabState extends State<_MembersTab>
       bloc: _cubit,
       builder: (context, state) {
         if (state is MembersLoading) {
-          return const Center(
-            child: CircularProgressIndicator(
-                color: AppColors.primary, strokeWidth: 2),
-          );
+          return const SkeletonList(item: ListTileSkeleton());
         }
         if (state is MembersError) {
           return _CentreMsg(

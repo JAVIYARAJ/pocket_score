@@ -106,19 +106,6 @@ class _ScorecardScreenState extends State<ScorecardScreen> {
           )
         : null;
 
-    final shareBtn = GestureDetector(
-      onTap: _openPdfPreview,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-        ),
-        child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 18),
-      ),
-    );
-
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -134,7 +121,6 @@ class _ScorecardScreenState extends State<ScorecardScreen> {
               title: 'Scorecard',
               showBackButton: true,
               subtitleWidget: winChip,
-              trailing: shareBtn,
             ),
             Expanded(
               child: ScorecardView(
@@ -142,7 +128,76 @@ class _ScorecardScreenState extends State<ScorecardScreen> {
                 isFullScreen: true,
               ),
             ),
+            _PdfBar(onTap: _openPdfPreview),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pinned at the bottom: always in reach and clearly labelled, unlike a bare
+/// icon in the header.
+class _PdfBar extends StatelessWidget {
+  final VoidCallback onTap;
+  const _PdfBar({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.borderLight)),
+        boxShadow: [BoxShadow(color: Color(0x0D000000), blurRadius: 16, offset: Offset(0, -4))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(18),
+              child: Ink(
+                padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.2)),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      gradient: AppColors.dangerGradient,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Scorecard PDF',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      Text('Download or share the full scorecard',
+                          style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                    ]),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.danger.withValues(alpha: 0.25)),
+                    ),
+                    child: const Icon(Icons.download_rounded, color: AppColors.danger, size: 18),
+                  ),
+                ]),
+              ),
+            ),
+          ),
         ),
       ),
     );

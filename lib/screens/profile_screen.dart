@@ -19,6 +19,7 @@ import '../bloc/profile_bloc.dart'
         AccountDeletionCancelled;
 import '../theme/app_theme.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/player_card_sheet.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
@@ -139,6 +140,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // Matches still syncing: skeleton, not "yet to face a ball".
+                                    if (!matchListState.synced && matchListState.matches.isEmpty)
+                                      const Shimmer(
+                                        child: Column(children: [
+                                          SkeletonBox(height: 120, radius: 18),
+                                          SizedBox(height: 12),
+                                          SkeletonBox(height: 120, radius: 18),
+                                        ]),
+                                      )
+                                    else ...[
                                     if (activeTabIndex == 0)
                                       _buildBattingStats(myStats),
                                     if (activeTabIndex == 1)
@@ -152,6 +163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         totalFours,
                                         totalSixes,
                                       ),
+                                    ],
                                     const SizedBox(height: 16),
                                     _buildAccountCard(user),
                                     const SizedBox(height: 16),

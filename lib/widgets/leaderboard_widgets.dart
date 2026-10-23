@@ -236,13 +236,39 @@ class _RaceSwitcher extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The podium: a compact night-stage card with the top three
+// The podium: a compact night-stage card with the top three.
+//
+// Intro (plays when it appears / on race switch): blocks spring up 3rd → 2nd
+// → 1st, players pop in, stats count up, the crown drops onto #1.
+// Idle loop: a shine sweeps the medal blocks, the leader's glow breathes and
+// sparkles twinkle — slow and subtle.
 // ─────────────────────────────────────────────────────────────────────────────
-class _Podium extends StatelessWidget {
+class _Podium extends StatefulWidget {
   final _Race race;
   final int raceIndex;
   final List<PlayerStats> top3;
   const _Podium({super.key, required this.race, required this.raceIndex, required this.top3});
+
+  @override
+  State<_Podium> createState() => _PodiumState();
+}
+
+class _PodiumState extends State<_Podium> with TickerProviderStateMixin {
+  late final AnimationController _intro = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..forward();
+  late final AnimationController _idle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 3200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _intro.dispose();
+    _idle.dispose();
+    super.dispose();
+  }
 
   static const _metal = [
     [Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFB45309)], // gold
@@ -250,132 +276,215 @@ class _Podium extends StatelessWidget {
     [Color(0xFFFED7AA), Color(0xFFEA580C), Color(0xFF9A3412)], // bronze
   ];
 
+  /// Intro progress for [begin]..[end] of the timeline with [curve].
+  double _phase(double begin, double end, Curve curve) =>
+      curve.transform(((_intro.value - begin) / (end - begin)).clamp(0.0, 1.0));
+
+  /// Headline stat counted up by [t] (0..1).
+  String _counted(PlayerStats p, double t) {
+    if (widget.raceIndex == 2) return ((_score(p, 2) ?? 0) * t).toStringAsFixed(1);
+    final n = widget.raceIndex == 0 ? p.runs : p.wickets;
+    return (n * t).round().toString();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final leader = top3.first;
-    final (value, unit) = _headline(leader, raceIndex);
+    final race = widget.race;
+    final leader = widget.top3.first;
+    final (_, unit) = _headline(leader, widget.raceIndex);
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF172036), Color(0xFF0B1220)],
-          ),
-        ),
-        child: Stack(children: [
-          // Soft glow of the race colour behind the leader + faint sparkles
-          Positioned.fill(child: CustomPaint(painter: _StageGlowPainter(race.color))),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Column(children: [
-              // Leader line
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: race.color.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: race.color.withValues(alpha: 0.55)),
+    return AnimatedBuilder(
+      animation: Listenable.merge([_intro, _idle]),
+      builder: (context, _) {
+        final header = _phase(0.0, 0.25, Curves.easeOut);
+        final leaderCount = _phase(0.45, 0.95, Curves.easeOutCubic);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF172036), Color(0xFF0B1220)],
+              ),
+            ),
+            child: Stack(children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _StageGlowPainter(
+                    race.color,
+                    breathe: _idle.value,
+                    intro: _phase(0.3, 0.9, Curves.easeOut),
                   ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(race.icon, size: 11, color: race.color),
-                    const SizedBox(width: 5),
-                    Text(race.award.toUpperCase(),
-                        style: TextStyle(fontSize: 9.5, letterSpacing: 1.2, fontWeight: FontWeight.w900, color: race.color)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: Column(children: [
+                  // Leader line slides in from the top
+                  Opacity(
+                    opacity: header,
+                    child: Transform.translate(
+                      offset: Offset(0, -10 * (1 - header)),
+                      child: Row(children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: race.color.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: race.color.withValues(alpha: 0.55)),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(race.icon, size: 11, color: race.color),
+                            const SizedBox(width: 5),
+                            Text(race.award.toUpperCase(),
+                                style: TextStyle(fontSize: 9.5, letterSpacing: 1.2, fontWeight: FontWeight.w900, color: race.color)),
+                          ]),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(text: leader.name, style: const TextStyle(color: Colors.white)),
+                              TextSpan(
+                                  text: '  ${_counted(leader, leaderCount)} $unit',
+                                  style: TextStyle(color: race.color)),
+                            ]),
+                            textAlign: TextAlign.end,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 2nd · 1st · 3rd
+                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    for (final rank in [2, 1, 3])
+                      Expanded(
+                        child: rank <= widget.top3.length
+                            ? _spot(context, widget.top3[rank - 1], rank)
+                            : const SizedBox(),
+                      ),
                   ]),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: leader.name, style: const TextStyle(color: Colors.white)),
-                      TextSpan(text: '  $value $unit', style: TextStyle(color: race.color)),
-                    ]),
-                    textAlign: TextAlign.end,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              // 2nd · 1st · 3rd
-              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                for (final rank in [2, 1, 3])
-                  Expanded(
-                    child: rank <= top3.length ? _spot(context, top3[rank - 1], rank) : const SizedBox(),
-                  ),
-              ]),
+                ]),
+              ),
             ]),
           ),
-        ]),
-      ),
+        );
+      },
     );
   }
 
   Widget _spot(BuildContext context, PlayerStats p, int rank) {
+    final race = widget.race;
     final metal = _metal[rank - 1];
     final first = rank == 1;
     final avatar = first ? 58.0 : 46.0;
     final blockHeight = first ? 52.0 : rank == 2 ? 38.0 : 28.0;
-    final (value, unit) = _headline(p, raceIndex);
+    final (_, unit) = _headline(p, widget.raceIndex);
+
+    // Build order: 3rd, then 2nd, then 1st — the winner arrives last.
+    final start = rank == 3 ? 0.05 : rank == 2 ? 0.15 : 0.25;
+    final block = _phase(start, start + 0.35, Curves.easeOutBack);
+    final pop = _phase(start + 0.2, start + 0.5, Curves.easeOutBack);
+    final text = _phase(start + 0.3, start + 0.55, Curves.easeOut);
+    final count = _phase(start + 0.3, start + 0.7, Curves.easeOutCubic);
+    final crown = _phase(0.7, 1.0, Curves.bounceOut);
+
+    // Shine band position for this block (each starts a little later)
+    final shine = ((_idle.value + (3 - rank) * 0.08) % 1.0) * 2.2 - 0.6;
 
     return GestureDetector(
       onTap: () => context.push('/player/${p.id}', extra: {'displayName': p.name}),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
-          Container(
-            width: avatar,
-            height: avatar,
-            padding: const EdgeInsets.all(2.5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(colors: [metal[0], metal[1], metal[2]]),
-              boxShadow: [
-                BoxShadow(
-                  color: (first ? race.color : metal[1]).withValues(alpha: first ? 0.5 : 0.25),
-                  blurRadius: first ? 16 : 8,
+        // Avatar pops in; crown drops onto #1
+        Transform.scale(
+          scale: pop.clamp(0.0, 1.2),
+          child: Opacity(
+            opacity: pop.clamp(0.0, 1.0),
+            child: Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
+              Container(
+                width: avatar,
+                height: avatar,
+                padding: const EdgeInsets.all(2.5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: SweepGradient(
+                    // Ring colours slowly rotate for a living medal rim
+                    transform: GradientRotation(_idle.value * 2 * math.pi),
+                    colors: [metal[0], metal[1], metal[2], metal[1], metal[0]],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (first ? race.color : metal[1]).withValues(alpha: first ? 0.5 : 0.25),
+                      blurRadius: first ? 16 : 8,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Container(
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF111827)),
-              alignment: Alignment.center,
-              child: Text(p.name[0].toUpperCase(),
-                  style: TextStyle(fontSize: avatar * 0.4, fontWeight: FontWeight.w900, color: Colors.white)),
-            ),
+                child: Container(
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF111827)),
+                  alignment: Alignment.center,
+                  child: Text(p.name[0].toUpperCase(),
+                      style: TextStyle(fontSize: avatar * 0.4, fontWeight: FontWeight.w900, color: Colors.white)),
+                ),
+              ),
+              if (first)
+                Positioned(
+                  top: -18 - 26 * (1 - crown),
+                  child: Opacity(
+                    opacity: crown,
+                    child: Icon(Icons.workspace_premium_rounded,
+                        size: 22,
+                        color: metal[1],
+                        shadows: [Shadow(color: metal[1].withValues(alpha: 0.7), blurRadius: 10)]),
+                  ),
+                ),
+            ]),
           ),
-          if (first)
-            Positioned(
-              top: -18,
-              child: Icon(Icons.workspace_premium_rounded, size: 22, color: metal[1]),
-            ),
-        ]),
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Text(p.name,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: first ? 13 : 12, fontWeight: FontWeight.w800, color: Colors.white)),
         ),
-        Text.rich(TextSpan(children: [
-          TextSpan(
-              text: value,
-              style: TextStyle(fontSize: first ? 16 : 14, fontWeight: FontWeight.w900, color: first ? race.color : Colors.white)),
-          TextSpan(
-              text: ' $unit',
-              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55))),
-        ])),
         const SizedBox(height: 6),
-        // Short metallic block
-        Container(
+        Opacity(
+          opacity: text,
+          child: Transform.translate(
+            offset: Offset(0, 8 * (1 - text)),
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Text(p.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: first ? 13 : 12, fontWeight: FontWeight.w800, color: Colors.white)),
+              ),
+              Text.rich(TextSpan(children: [
+                TextSpan(
+                    text: _counted(p, count),
+                    style: TextStyle(
+                        fontSize: first ? 16 : 14,
+                        fontWeight: FontWeight.w900,
+                        color: first ? race.color : Colors.white,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+                TextSpan(
+                    text: ' $unit',
+                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Colors.white.withValues(alpha: 0.55))),
+              ])),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Metallic block springs up, with a shine sweeping across it. Its full
+        // height is reserved and the rise is a transform, so the card keeps
+        // its size during the intro and nothing below jumps.
+        Transform(
+          alignment: Alignment.bottomCenter,
+          transform: Matrix4.diagonal3Values(1, block.clamp(0.0, 1.15), 1),
+          child: Container(
           height: blockHeight,
           margin: const EdgeInsets.symmetric(horizontal: 6),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -384,46 +493,73 @@ class _Podium extends StatelessWidget {
             ),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
           ),
-          alignment: Alignment.center,
-          child: Text('$rank',
-              style: TextStyle(
-                  fontSize: first ? 24 : 18,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  color: Colors.white,
-                  shadows: [Shadow(color: metal[2].withValues(alpha: 0.6), blurRadius: 3, offset: const Offset(0, 1))])),
+          child: Stack(fit: StackFit.expand, children: [
+            // Shine band
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment(-1 + shine * 2 - 0.4, -1),
+                  end: Alignment(-1 + shine * 2 + 0.4, 1),
+                  colors: [
+                    Colors.white.withValues(alpha: 0),
+                    Colors.white.withValues(alpha: 0.45),
+                    Colors.white.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            ),
+            if (block > 0.6)
+              Center(
+                child: Text('$rank',
+                    style: TextStyle(
+                        fontSize: first ? 24 : 18,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        color: Colors.white,
+                        shadows: [Shadow(color: metal[2].withValues(alpha: 0.6), blurRadius: 3, offset: const Offset(0, 1))])),
+              ),
+          ]),
+        ),
         ),
       ]),
     );
   }
 }
 
-/// Race-coloured glow behind the leader and a few faint sparkles (static).
+/// Race-coloured glow behind the leader (fades in, then gently breathes) and
+/// a few twinkling sparkles.
 class _StageGlowPainter extends CustomPainter {
   final Color tint;
-  _StageGlowPainter(this.tint);
+  final double breathe; // 0..1 looping
+  final double intro;   // 0..1 once
+  _StageGlowPainter(this.tint, {required this.breathe, required this.intro});
 
   @override
   void paint(Canvas canvas, Size size) {
+    final pulse = (1 - math.cos(breathe * 2 * math.pi)) / 2; // 0→1→0
     final center = Offset(size.width / 2, size.height * 0.45);
+    final radius = size.width * (0.40 + 0.06 * pulse);
     canvas.drawCircle(
       center,
-      size.width * 0.45,
+      radius,
       Paint()
         ..shader = RadialGradient(
-          colors: [tint.withValues(alpha: 0.28), tint.withValues(alpha: 0.0)],
-        ).createShader(Rect.fromCircle(center: center, radius: size.width * 0.45)),
+          colors: [tint.withValues(alpha: (0.22 + 0.10 * pulse) * intro), tint.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromCircle(center: center, radius: radius)),
     );
     final rnd = math.Random(3);
-    for (var i = 0; i < 14; i++) {
-      final o = Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height * 0.55);
-      canvas.drawCircle(o, rnd.nextDouble() * 1.1 + 0.4,
-          Paint()..color = Colors.white.withValues(alpha: 0.2 + rnd.nextDouble() * 0.3));
+    for (var i = 0; i < 16; i++) {
+      final o = Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height * 0.6);
+      final r = rnd.nextDouble() * 1.1 + 0.5;
+      final phase = rnd.nextDouble();
+      final twinkle = (1 - math.cos((breathe + phase) * 2 * math.pi)) / 2;
+      canvas.drawCircle(o, r, Paint()..color = Colors.white.withValues(alpha: (0.12 + 0.45 * twinkle) * intro));
     }
   }
 
   @override
-  bool shouldRepaint(_StageGlowPainter old) => old.tint != tint;
+  bool shouldRepaint(_StageGlowPainter old) =>
+      old.tint != tint || old.breathe != breathe || old.intro != intro;
 }
 
 class _NoRaceYet extends StatelessWidget {
@@ -632,8 +768,11 @@ class _LeaderboardRankCardState extends State<LeaderboardRankCard> {
                   borderRadius: BorderRadius.circular(4),
                   child: Stack(children: [
                     Container(height: 6, color: AppColors.surfaceLight),
-                    FractionallySizedBox(
-                      widthFactor: progress,
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: progress),
+                      duration: const Duration(milliseconds: 900),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, v, child) => FractionallySizedBox(widthFactor: v, child: child),
                       child: Container(
                         height: 6,
                         decoration: BoxDecoration(

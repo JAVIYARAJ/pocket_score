@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/player_model.dart';
 import '../theme/app_theme.dart';
+import '../widgets/shimmer.dart';
 import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
@@ -922,11 +923,22 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
               ]),
             ),
             const Spacer(),
-            const CircularProgressIndicator(
-                color: Colors.white54, strokeWidth: 2),
-            const SizedBox(height: 24),
+            const Shimmer(
+              dark: true,
+              child: Column(children: [
+                SkeletonCircle(size: 76),
+                SizedBox(height: 14),
+                SkeletonBox(width: 150, height: 20),
+                SizedBox(height: 8),
+                SkeletonBox(width: 90, height: 12),
+              ]),
+            ),
+            const SizedBox(height: 28),
           ]),
         ),
+      ),
+      const Expanded(
+        child: SkeletonList(item: ListTileSkeleton(trailing: false), count: 4),
       ),
     ]);
   }

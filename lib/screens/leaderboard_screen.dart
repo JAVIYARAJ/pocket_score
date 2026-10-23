@@ -7,6 +7,7 @@ import '../widgets/empty_state.dart';
 import '../theme/animations.dart';
 import '../utils/stats_utils.dart';
 import '../widgets/leaderboard_widgets.dart';
+import '../widgets/shimmer.dart';
 
 class LeaderboardScreen extends StatelessWidget {
   const LeaderboardScreen({super.key});
@@ -31,6 +32,17 @@ class LeaderboardScreen extends StatelessWidget {
                 .toList();
             final completed = mState.matches.where((m) => m.status == 'completed').length;
 
+            // Still loading: skeleton instead of a misleading empty podium.
+            if (!mState.synced && mState.matches.isEmpty) {
+              return ListView(
+                physics: const NeverScrollableScrollPhysics(),
+                children: const [
+                  _HallOfFameHeader(players: 0, matches: 0, loading: true),
+                  Padding(padding: EdgeInsets.all(16), child: LeaderboardSkeleton()),
+                ],
+              );
+            }
+
             return LeaderboardBoard(
               players: players,
               bottomPadding: 120,
@@ -51,7 +63,8 @@ class LeaderboardScreen extends StatelessWidget {
 class _HallOfFameHeader extends StatelessWidget {
   final int players;
   final int matches;
-  const _HallOfFameHeader({required this.players, required this.matches});
+  final bool loading;
+  const _HallOfFameHeader({required this.players, required this.matches, this.loading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -74,11 +87,21 @@ class _HallOfFameHeader extends StatelessWidget {
             const Text('Hall of Fame',
                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5)),
             const SizedBox(height: 6),
-            Row(children: [
-              _pill(Icons.people_alt_rounded, '$players player${players == 1 ? '' : 's'}'),
-              const SizedBox(width: 8),
-              _pill(Icons.sports_cricket_rounded, '$matches match${matches == 1 ? '' : 'es'}'),
-            ]),
+            if (loading)
+              const Shimmer(
+                dark: true,
+                child: Row(children: [
+                  SkeletonBox(width: 86, height: 24, radius: 12),
+                  SizedBox(width: 8),
+                  SkeletonBox(width: 86, height: 24, radius: 12),
+                ]),
+              )
+            else
+              Row(children: [
+                _pill(Icons.people_alt_rounded, '$players player${players == 1 ? '' : 's'}'),
+                const SizedBox(width: 8),
+                _pill(Icons.sports_cricket_rounded, '$matches match${matches == 1 ? '' : 'es'}'),
+              ]),
           ]),
         ),
         ScaleEntrance(

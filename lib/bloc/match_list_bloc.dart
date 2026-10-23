@@ -42,10 +42,14 @@ class _RefreshMatchList extends MatchListEvent {}
 // ── State ───────────────────────────────────────────────────────
 class MatchListState extends Equatable {
   final List<MatchSummary> matches;
-  const MatchListState({this.matches = const []});
+  /// False until the first sync from Supabase finishes (successfully or not),
+  /// so screens can show a loading skeleton instead of a misleading "no
+  /// matches yet".
+  final bool synced;
+  const MatchListState({this.matches = const [], this.synced = false});
 
   @override
-  List<Object?> get props => [matches];
+  List<Object?> get props => [matches, synced];
 
   Map<String, dynamic> toJson() => {
     'matches': matches.map((m) => m.toJson()).toList(),
@@ -81,9 +85,12 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
       final seq = ++_fetchSeq;
       try {
         final matches = await _repo.getAll();
-        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches)));
+        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches), synced: true));
         _startRealtimeSync(); // watch for status changes from other devices
-      } catch (_) {}
+      } catch (_) {
+        // Stop the loading skeleton; the list stays as it was.
+        emit(MatchListState(matches: state.matches, synced: true));
+      }
     });
 
     // ── Silent refresh triggered by Realtime ─────────────
@@ -92,13 +99,13 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
       try {
         final matches = await _repo.getAll();
         // A newer refresh may have finished first; don't overwrite it.
-        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches)));
+        if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches), synced: true));
       } catch (_) {}
     });
 
     // ── Add ────────────────────────────────────────────────
     on<AddMatchToList>((event, emit) {
-      emit(MatchListState(matches: [event.match, ...state.matches]));
+      emit(MatchListState(matches: [event.match, ...state.matches], synced: state.synced));
       _enqueueWrite(event.match.id, () => _repo.upsert(event.match));
     });
 
@@ -107,7 +114,7 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
       final updated = state.matches.map((m) {
         return m.id == event.match.id ? event.match : m;
       }).toList();
-      emit(MatchListState(matches: updated));
+      emit(MatchListState(matches: updated, synced: state.synced));
       _enqueueWrite(event.match.id, () => _repo.upsert(event.match));
 
       // When a match is finalised, persist per-player stats to the
@@ -122,6 +129,7 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
     on<RemoveMatchFromList>((event, emit) {
       emit(MatchListState(
         matches: state.matches.where((m) => m.id != event.matchId).toList(),
+        synced: state.synced,
       ));
       _pendingDeletes.add(event.matchId);
       _enqueueWrite(event.matchId, () => _repo.delete(event.matchId),
