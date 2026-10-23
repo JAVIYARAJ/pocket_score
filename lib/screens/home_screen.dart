@@ -228,7 +228,7 @@ class _HeroHeader extends StatelessWidget {
                         .firstWhere((m) => m?.status == 'in_progress',
                             orElse: () => null);
                     if (live != null) return _LiveBanner(match: live);
-                    return _NewMatchCard(context);
+                    return _newMatchCard(context);
                   },
                 ),
               ),
@@ -248,10 +248,12 @@ class _HeroHeader extends StatelessWidget {
                       if (last.scoreData != null) {
                         try {
                           context.push('/scorecard', extra: {
-                            'state': ScoreState.fromJson(last.scoreData!),
+                            'state': parsedScore(last.scoreData!),
                             'overs': last.totalOvers,
                           });
-                        } catch (_) {}
+                        } catch (_) {
+                          // Unreadable score data: nothing to open.
+                        }
                       }
                     },
                     child: Container(
@@ -382,7 +384,7 @@ class _HeroHeader extends StatelessWidget {
     );
   }
 
-  Widget _NewMatchCard(BuildContext context) {
+  Widget _newMatchCard(BuildContext context) {
     return GestureDetector(
       onTap: () {
         context.read<MatchBloc>().add(ResetMatch());
@@ -558,7 +560,9 @@ class _LiveBannerState extends State<_LiveBanner> {
       final data = await MatchRepository(Supabase.instance.client)
           .getLiveScore(widget.match.id);
       if (mounted && seq == _fetchSeq) setState(() => _scoreData = data);
-    } catch (_) {}
+    } catch (_) {
+      // Best effort: the card keeps its last snapshot until the next update.
+    }
   }
 
   void _subscribe() {
@@ -621,8 +625,10 @@ class _LiveBannerState extends State<_LiveBanner> {
   Widget build(BuildContext context) {
     ScoreState? score;
     try {
-      if (_scoreData != null) score = ScoreState.fromJson(_scoreData!);
-    } catch (_) {}
+      if (_scoreData != null) score = parsedScore(_scoreData!);
+    } catch (_) {
+      // Unreadable snapshot: the card falls back to the summary totals.
+    }
 
     final inn = score?.currentInnings;
     final battingTeam = inn?.battingTeamName ?? widget.match.teamAName;
@@ -640,13 +646,9 @@ class _LiveBannerState extends State<_LiveBanner> {
     String? strikerName, nonStrikerName;
     String strikerStat = '', nonStrikerStat = '';
     if (score != null && inn != null) {
-      Player? findP(List<dynamic> players, String? id) {
+      Player? findP(List<Player> players, String? id) {
         if (id == null || id.isEmpty) return null;
-        try {
-          return players.firstWhere((p) => p.id == id) as Player;
-        } catch (_) {
-          return null;
-        }
+        return players.where((p) => p.id == id).firstOrNull;
       }
 
       final striker = findP(inn.battingPlayers, score.strikerId);
@@ -1153,10 +1155,12 @@ class _MatchCard extends StatelessWidget {
         } else if (isDone && match.scoreData != null) {
           try {
             context.push('/scorecard', extra: {
-              'state': ScoreState.fromJson(match.scoreData!),
+              'state': parsedScore(match.scoreData!),
               'overs': match.totalOvers,
             });
-          } catch (_) {}
+          } catch (_) {
+            // Unreadable score data: nothing to open.
+          }
         }
       },
       onLongPress: () => _options(context),
@@ -1456,7 +1460,7 @@ class _MatchCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textMuted)),
               ])),
-          Icon(Icons.chevron_right, color: AppColors.border, size: 20),
+          const Icon(Icons.chevron_right, color: AppColors.border, size: 20),
         ]),
       ),
     );

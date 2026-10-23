@@ -203,7 +203,7 @@ class _SuperOverOpeningScreenState extends State<SuperOverOpeningScreen> {
                                     )
                                   : Container(
                                       padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
+                                      decoration: const BoxDecoration(color: AppColors.surfaceLight, shape: BoxShape.circle),
                                       child: const Icon(Icons.radio_button_unchecked, color: AppColors.textMuted, size: 20),
                                     ),
                               onTap: () {

@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:equatable/equatable.dart';
 import 'package:pocket_score/models/player_model.dart';
 import 'ball_model.dart';
@@ -49,6 +51,11 @@ class BowlerStats {
   double get economy => ballsBowled > 0 ? (runsConceded / ballsBowled) * 6 : 0.0;
 }
 
+/// One innings: the balls bowled plus who batted and bowled.
+///
+/// Immutable — a new ball produces a new Innings (see ScoreBloc). That lets
+/// every derived figure below be computed once, on first use, and cached:
+/// the scoring screen reads these many times per rebuild.
 class Innings extends Equatable {
   final String battingTeamName;
   final List<Ball> balls;
@@ -56,17 +63,22 @@ class Innings extends Equatable {
   final List<Player> battingPlayers;
   final List<Player> bowlingPlayers;
 
-  const Innings({
+  /// Looks a player up in either side of this innings.
+  Player? playerById(String id) =>
+      battingPlayers.where((p) => p.id == id).firstOrNull ??
+      bowlingPlayers.where((p) => p.id == id).firstOrNull;
+
+  Innings({
     required this.battingTeamName,
-    this.balls = const [],
+    List<Ball> balls = const [],
     this.target = 0,
     this.battingPlayers = const [],
     this.bowlingPlayers = const [],
-  });
+  }) : balls = UnmodifiableListView(balls); // guards the caches below
 
-  int get totalRuns => balls.fold(0, (sum, ball) => sum + ball.totalRuns);
-  int get totalWickets => balls.where((ball) => ball.isWicket).length;
-  int get legalBallsCount => balls.where((ball) => ball.isLegalBall).length;
+  late final int totalRuns = balls.fold(0, (sum, ball) => sum + ball.totalRuns);
+  late final int totalWickets = balls.where((ball) => ball.isWicket).length;
+  late final int legalBallsCount = balls.where((ball) => ball.isLegalBall).length;
 
   String get overDisplay {
     int overs = legalBallsCount ~/ 6;
@@ -85,8 +97,10 @@ class Innings extends Equatable {
     return left < 0 ? 0 : left;
   }
 
-  /// Compute over-wise summary: [{overNum, runs, wickets, balls: [Ball]}]
-  List<OverSummary> get overSummaries {
+  /// Over-by-over summary, including the over in progress (if any).
+  late final List<OverSummary> overSummaries = List.unmodifiable(_computeOverSummaries());
+
+  List<OverSummary> _computeOverSummaries() {
     final List<OverSummary> overs = [];
     int legalCount = 0;
     int currentOverRuns = 0;
@@ -128,8 +142,10 @@ class Innings extends Equatable {
   }
 
 
-  /// Compute batting stats per batsman
-  Map<String, BatsmanStats> get batsmanStats {
+  /// Batting figures per batter (read-only).
+  late final Map<String, BatsmanStats> batsmanStats = UnmodifiableMapView(_computeBatsmanStats());
+
+  Map<String, BatsmanStats> _computeBatsmanStats() {
     final Map<String, BatsmanStats> stats = {};
     for (var ball in balls) {
       stats.putIfAbsent(ball.strikerId, () => BatsmanStats(ball.strikerId));
@@ -152,8 +168,10 @@ class Innings extends Equatable {
     return stats;
   }
 
-  /// Compute bowling stats per bowler
-  Map<String, BowlerStats> get bowlerStatsMap {
+  /// Bowling figures per bowler (read-only).
+  late final Map<String, BowlerStats> bowlerStatsMap = UnmodifiableMapView(_computeBowlerStats());
+
+  Map<String, BowlerStats> _computeBowlerStats() {
     final Map<String, BowlerStats> stats = {};
     for (var ball in balls) {
       stats.putIfAbsent(ball.bowlerId, () => BowlerStats(ball.bowlerId));

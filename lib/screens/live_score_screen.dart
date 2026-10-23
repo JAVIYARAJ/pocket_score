@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../widgets/shimmer.dart';
 import '../theme/animations.dart';
 import '../widgets/premium_header.dart';
+import '../utils/stats_utils.dart' show parsedScore;
 
 class _CelebrationData {
   final String text;
@@ -119,7 +120,9 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
           _celebration.value = _CelebrationData(text: 'FOUR! 💥', color: AppColors.four);
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Celebrations are decorative; a bad snapshot just skips one.
+    }
   }
 
   // ── Realtime channel — no raw table query ─────────────────────────────────
@@ -155,7 +158,7 @@ class _LiveScoreScreenState extends State<LiveScoreScreen>
       body = const _EndedView();
     } else {
       try {
-        final score = ScoreState.fromJson(_scoreData!);
+        final score = parsedScore(_scoreData!);
         body = _LiveBody(score: score, totalOvers: widget.totalOvers, powerPlayOvers: widget.powerPlayOvers);
       } catch (_) {
         body = const _ErrorView(message: 'Could not parse score data.');

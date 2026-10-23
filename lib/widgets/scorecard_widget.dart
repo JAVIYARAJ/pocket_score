@@ -455,27 +455,9 @@ class ScorecardView extends StatelessWidget {
     }
   }
 
-  String _findName(Innings inn, String id) {
-    try {
-      return inn.battingPlayers.firstWhere((p) => p.id == id).name;
-    } catch (_) {}
-    try {
-      return inn.bowlingPlayers.firstWhere((p) => p.id == id).name;
-    } catch (_) {
-      return '—';
-    }
-  }
+  String _findName(Innings inn, String id) => inn.playerById(id)?.name ?? '—';
 
-  Player? _findPlayer(Innings inn, String id) {
-    try {
-      return inn.battingPlayers.firstWhere((p) => p.id == id);
-    } catch (_) {}
-    try {
-      return inn.bowlingPlayers.firstWhere((p) => p.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
+  Player? _findPlayer(Innings inn, String id) => inn.playerById(id);
 
   Widget _statBadge(String label, String value, Color color) {
     return Container(

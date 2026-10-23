@@ -176,8 +176,8 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
     if (match.scoreData == null) continue;
     
     try {
-      final score = ScoreState.fromJson(match.scoreData!);
-      
+      final score = parsedScore(match.scoreData!);
+
       // We will copy current rank to previousRank BEFORE processing this match for players in this match
       final Set<String> playersInMatch = {};
       void markPlayers(Innings? inn) {
@@ -285,11 +285,32 @@ Map<String, PlayerStats> calculateAllPlayerStats(List<MatchSummary> matches, Lis
   return stats;
 }
 
+// Parsing a stored match (every ball, both innings) is the expensive part of
+// the stats screens, and the same match maps are rendered again on every
+// rebuild. Results are cached against the map instance itself, so they are
+// dropped automatically once a match is reloaded or garbage-collected.
+final _parsedScores = Expando<ScoreState>('parsedScore');
+final _momCache = Expando<_MoMResult>('manOfTheMatch');
+
+class _MoMResult {
+  final PlayerStats? player;
+  const _MoMResult(this.player);
+}
+
+/// [ScoreState.fromJson], memoised per stored map. Treat the result as
+/// read-only: it is shared between callers.
+ScoreState parsedScore(Map<String, dynamic> data) =>
+    _parsedScores[data] ??= ScoreState.fromJson(data);
+
 PlayerStats? calculateManOfTheMatch(MatchSummary match) {
-  if (match.scoreData == null) return null;
+  final data = match.scoreData;
+  if (data == null) return null;
+  return (_momCache[data] ??= _MoMResult(_computeMoM(data))).player;
+}
+
+PlayerStats? _computeMoM(Map<String, dynamic> data) {
   try {
-    final score = ScoreState.fromJson(match.scoreData!);
-    return calculateMoMFromState(score);
+    return calculateMoMFromState(parsedScore(data));
   } catch (e) {
     return null;
   }

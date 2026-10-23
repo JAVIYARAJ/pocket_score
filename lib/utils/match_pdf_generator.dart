@@ -34,14 +34,14 @@ Future<Uint8List> generateMatchResultPdf(
   final mom = calculateMoMFromState(scoreState);
 
   // Take top 3 batsmen
-  List<MapEntry<String, BatsmanStats>> _topBats(Innings inn) {
+  List<MapEntry<String, BatsmanStats>> topBats(Innings inn) {
     final list = inn.batsmanStats.entries.toList()
       ..sort((a, b) => b.value.runs.compareTo(a.value.runs));
     return list.take(3).toList();
   }
 
   // Take top 3 bowlers
-  List<MapEntry<String, BowlerStats>> _topBowls(Innings inn) {
+  List<MapEntry<String, BowlerStats>> topBowls(Innings inn) {
     final list = inn.bowlerStatsMap.entries.toList()
       ..sort((a, b) {
         if (b.value.wickets != a.value.wickets) {
@@ -52,10 +52,7 @@ Future<Uint8List> generateMatchResultPdf(
     return list.take(3).toList();
   }
 
-  String _name(Innings inn, String id) {
-    try { return inn.battingPlayers.firstWhere((p) => p.id == id).name; } catch (_) {}
-    try { return inn.bowlingPlayers.firstWhere((p) => p.id == id).name; } catch (_) { return '—'; }
-  }
+  String playerName(Innings inn, String id) => inn.playerById(id)?.name ?? '—';
 
   // ── Determine winner display ──────────────────────────────────────────────
   String winnerName = '';
@@ -93,7 +90,7 @@ Future<Uint8List> generateMatchResultPdf(
 
   final dateStr = '${date.day} ${_monthName(date.month)} ${date.year}';
 
-  pw.Widget _statCell(String text, {bool bold = false, pw.TextAlign align = pw.TextAlign.left, PdfColor color = _textMuted}) {
+  pw.Widget statCell(String text, {bool bold = false, pw.TextAlign align = pw.TextAlign.left, PdfColor color = _textMuted}) {
     return pw.Text(
       text,
       textAlign: align,
@@ -105,9 +102,9 @@ Future<Uint8List> generateMatchResultPdf(
     );
   }
 
-  pw.Widget _inningsPerformers(String title, Innings batInn, Innings bowlInn) {
-    final bats = _topBats(batInn);
-    final bowls = _topBowls(bowlInn);
+  pw.Widget inningsPerformers(String title, Innings batInn, Innings bowlInn) {
+    final bats = topBats(batInn);
+    final bowls = topBowls(bowlInn);
 
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 16),
@@ -152,24 +149,24 @@ Future<Uint8List> generateMatchResultPdf(
                       pw.SizedBox(height: 8),
                       pw.Row(
                         children: [
-                          pw.Expanded(flex: 4, child: _statCell('Batter', bold: true)),
-                          pw.Expanded(flex: 1, child: _statCell('R', bold: true, align: pw.TextAlign.right, color: _textDark)),
-                          pw.Expanded(flex: 1, child: _statCell('B', bold: true, align: pw.TextAlign.right)),
-                          pw.Expanded(flex: 2, child: _statCell('SR', bold: true, align: pw.TextAlign.right)),
+                          pw.Expanded(flex: 4, child: statCell('Batter', bold: true)),
+                          pw.Expanded(flex: 1, child: statCell('R', bold: true, align: pw.TextAlign.right, color: _textDark)),
+                          pw.Expanded(flex: 1, child: statCell('B', bold: true, align: pw.TextAlign.right)),
+                          pw.Expanded(flex: 2, child: statCell('SR', bold: true, align: pw.TextAlign.right)),
                         ]
                       ),
                       pw.Divider(color: const PdfColor(0.9, 0.9, 0.9), thickness: 0.5),
                       ...bats.map((e) {
                         final s = e.value;
-                        final name = _name(batInn, e.key);
+                        final name = playerName(batInn, e.key);
                         return pw.Padding(
                           padding: const pw.EdgeInsets.symmetric(vertical: 4),
                           child: pw.Row(
                             children: [
                               pw.Expanded(flex: 4, child: pw.Text(s.isOut ? name : '$name *', style: pw.TextStyle(fontSize: 9, color: s.isOut ? _textDark : _primary, fontWeight: s.isOut ? pw.FontWeight.normal : pw.FontWeight.bold))),
-                              pw.Expanded(flex: 1, child: _statCell('${s.runs}', bold: true, align: pw.TextAlign.right, color: _textDark)),
-                              pw.Expanded(flex: 1, child: _statCell('${s.ballsFaced}', align: pw.TextAlign.right)),
-                              pw.Expanded(flex: 2, child: _statCell(s.strikeRate.toStringAsFixed(1), align: pw.TextAlign.right)),
+                              pw.Expanded(flex: 1, child: statCell('${s.runs}', bold: true, align: pw.TextAlign.right, color: _textDark)),
+                              pw.Expanded(flex: 1, child: statCell('${s.ballsFaced}', align: pw.TextAlign.right)),
+                              pw.Expanded(flex: 2, child: statCell(s.strikeRate.toStringAsFixed(1), align: pw.TextAlign.right)),
                             ]
                           )
                         );
@@ -189,26 +186,26 @@ Future<Uint8List> generateMatchResultPdf(
                       pw.SizedBox(height: 8),
                       pw.Row(
                         children: [
-                          pw.Expanded(flex: 4, child: _statCell('Bowler', bold: true)),
-                          pw.Expanded(flex: 1, child: _statCell('O', bold: true, align: pw.TextAlign.right)),
-                          pw.Expanded(flex: 1, child: _statCell('R', bold: true, align: pw.TextAlign.right)),
-                          pw.Expanded(flex: 1, child: _statCell('W', bold: true, align: pw.TextAlign.right, color: _textDark)),
-                          pw.Expanded(flex: 2, child: _statCell('ECO', bold: true, align: pw.TextAlign.right)),
+                          pw.Expanded(flex: 4, child: statCell('Bowler', bold: true)),
+                          pw.Expanded(flex: 1, child: statCell('O', bold: true, align: pw.TextAlign.right)),
+                          pw.Expanded(flex: 1, child: statCell('R', bold: true, align: pw.TextAlign.right)),
+                          pw.Expanded(flex: 1, child: statCell('W', bold: true, align: pw.TextAlign.right, color: _textDark)),
+                          pw.Expanded(flex: 2, child: statCell('ECO', bold: true, align: pw.TextAlign.right)),
                         ]
                       ),
                       pw.Divider(color: const PdfColor(0.9, 0.9, 0.9), thickness: 0.5),
                       ...bowls.map((e) {
                         final s = e.value;
-                        final name = _name(bowlInn, e.key);
+                        final name = playerName(bowlInn, e.key);
                         return pw.Padding(
                           padding: const pw.EdgeInsets.symmetric(vertical: 4),
                           child: pw.Row(
                             children: [
-                              pw.Expanded(flex: 4, child: pw.Text(name, style: pw.TextStyle(fontSize: 9, color: _textDark))),
-                              pw.Expanded(flex: 1, child: _statCell(s.oversBowled, align: pw.TextAlign.right)),
-                              pw.Expanded(flex: 1, child: _statCell('${s.runsConceded}', align: pw.TextAlign.right)),
-                              pw.Expanded(flex: 1, child: _statCell('${s.wickets}', bold: true, align: pw.TextAlign.right, color: _textDark)),
-                              pw.Expanded(flex: 2, child: _statCell(s.economy.toStringAsFixed(1), align: pw.TextAlign.right)),
+                              pw.Expanded(flex: 4, child: pw.Text(name, style: const pw.TextStyle(fontSize: 9, color: _textDark))),
+                              pw.Expanded(flex: 1, child: statCell(s.oversBowled, align: pw.TextAlign.right)),
+                              pw.Expanded(flex: 1, child: statCell('${s.runsConceded}', align: pw.TextAlign.right)),
+                              pw.Expanded(flex: 1, child: statCell('${s.wickets}', bold: true, align: pw.TextAlign.right, color: _textDark)),
+                              pw.Expanded(flex: 2, child: statCell(s.economy.toStringAsFixed(1), align: pw.TextAlign.right)),
                             ]
                           )
                         );
@@ -337,7 +334,7 @@ Future<Uint8List> generateMatchResultPdf(
                                   pw.SizedBox(height: 12),
                                   pw.Text('${first.totalRuns}/${first.totalWickets}', style: pw.TextStyle(fontSize: 42, fontWeight: pw.FontWeight.bold, color: _textDark)),
                                   pw.SizedBox(height: 4),
-                                  pw.Text('${first.overDisplay} Overs', style: pw.TextStyle(fontSize: 11, color: _textMuted)),
+                                  pw.Text('${first.overDisplay} Overs', style: const pw.TextStyle(fontSize: 11, color: _textMuted)),
                                   pw.SizedBox(height: 12),
                                   pw.Container(
                                     padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -374,7 +371,7 @@ Future<Uint8List> generateMatchResultPdf(
                                   pw.SizedBox(height: 12),
                                   pw.Text('${second.totalRuns}/${second.totalWickets}', style: pw.TextStyle(fontSize: 42, fontWeight: pw.FontWeight.bold, color: _textDark)),
                                   pw.SizedBox(height: 4),
-                                  pw.Text('${second.overDisplay} Overs', style: pw.TextStyle(fontSize: 11, color: _textMuted)),
+                                  pw.Text('${second.overDisplay} Overs', style: const pw.TextStyle(fontSize: 11, color: _textMuted)),
                                   pw.SizedBox(height: 12),
                                   pw.Container(
                                     padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -421,9 +418,9 @@ Future<Uint8List> generateMatchResultPdf(
                       ],
 
                       // ── DETAILED PERFORMANCES ─────────────────────────────
-                      _inningsPerformers('1st Innings  -  ${first.battingTeamName}', first, first),
+                      inningsPerformers('1st Innings  -  ${first.battingTeamName}', first, first),
                       if (second != null)
-                        _inningsPerformers('2nd Innings  -  ${second.battingTeamName}', second, second),
+                        inningsPerformers('2nd Innings  -  ${second.battingTeamName}', second, second),
 
                       pw.Spacer(),
 

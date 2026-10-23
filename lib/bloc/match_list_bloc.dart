@@ -100,7 +100,9 @@ class MatchListBloc extends Bloc<MatchListEvent, MatchListState> {
         final matches = await _repo.getAll();
         // A newer refresh may have finished first; don't overwrite it.
         if (seq == _fetchSeq) emit(MatchListState(matches: _withLocal(matches), synced: true));
-      } catch (_) {}
+      } catch (_) {
+        // Background refresh: keep the current list; the next event retries.
+      }
     });
 
     // ── Add ────────────────────────────────────────────────

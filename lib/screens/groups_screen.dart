@@ -181,7 +181,7 @@ class _GroupCard extends StatelessWidget {
             Container(
               width: 52,
               height: 52,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 shape: BoxShape.circle,
               ),
@@ -832,10 +832,10 @@ class _JoinGroupSheetState extends State<_JoinGroupSheet> {
         ),
 
         const SizedBox(height: 14),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.info_outline_rounded, size: 13, color: AppColors.textMuted),
-          const SizedBox(width: 6),
-          const Text('Hold the QR code steady inside the frame.',
+        const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.info_outline_rounded, size: 13, color: AppColors.textMuted),
+          SizedBox(width: 6),
+          Text('Hold the QR code steady inside the frame.',
               style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
         ]),
         const SizedBox(height: 4),

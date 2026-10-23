@@ -425,11 +425,7 @@ class _MatchSetupScreenState extends State<MatchSetupScreen> {
 
   String _getSelectedGroupName(String? selectedGroupId) {
     if (selectedGroupId == null) return 'No group selected (Solo Match)';
-    try {
-      return _myGroups.firstWhere((g) => g.id == selectedGroupId).name;
-    } catch (_) {
-      return 'Unknown Group';
-    }
+    return _myGroups.where((g) => g.id == selectedGroupId).firstOrNull?.name ?? 'Unknown Group';
   }
 
   void _showGroupPicker() {
